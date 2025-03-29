@@ -88,17 +88,17 @@ impl EnabledMods {
         }
     }
     pub fn is_mod_enabled(&self, this_mod: &Mod) -> Result<bool> {
-        Ok(self.ids.contains(&this_mod.id))
+        Ok(self.ids.contains(&this_mod.uuid.to_string()))
     }
     pub fn enable_mod(&mut self, mod_to_enable: &Mod, config: &Config) -> Result<()> {
-        if !self.ids.contains(&mod_to_enable.id) {
-            self.ids.push(mod_to_enable.id.clone());
+        if !self.ids.contains(&mod_to_enable.uuid.to_string()) {
+            self.ids.push(mod_to_enable.uuid.to_string());
         }
         self.save_to_file(&config.enabled_mods_file)?;
         Ok(())
     }
     pub fn disable_mod(&mut self, mod_to_disable: &Mod, config: &Config) -> Result<()> {
-        self.ids.retain(|x| x != &mod_to_disable.id);
+        self.ids.retain(|x| x != &mod_to_disable.uuid.to_string());
         self.save_to_file(&config.enabled_mods_file)?;
         Ok(())
     }

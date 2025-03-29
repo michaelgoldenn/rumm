@@ -2,11 +2,12 @@ use std::{fs::File, io::Write};
 
 use serde::Deserialize;
 use color_eyre::eyre::{eyre, Result};
+use uuid::Uuid;
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Mod {
     #[serde(rename(deserialize = "uuid4"))]
-    pub id: String,
+    pub uuid: Uuid,
     pub name: String,
     pub full_name: String,
     pub owner: String,
@@ -21,7 +22,7 @@ pub struct Mod {
     pub categories: Vec<String>,
     pub versions: Vec<Version>,
 }
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, PartialEq)]
 pub struct Version {
     pub date_created: String,
     pub dependencies: Vec<String>,
@@ -44,13 +45,28 @@ pub struct ModList {
 
 
 impl Mod {
+    /// updates the versions of the mod from thunderstore.
+    /// returns `true` if the verisons have changed, `false` otherwise
+    pub async fn update(&mut self) -> Result<bool> {
+        // the docs say that this url format is depricated, but I didn't see a better way to do this
+        let request_url = format!("https://thunderstore.io/c/rumble/api/v1/package/{}", self.uuid);
+        let response_text = reqwest::get(&request_url)
+            .await?
+            .text()
+            .await?;
+        let response: Mod = serde_json::from_str(&response_text)?;
+        let mut have_versions_changed: bool = false;
+        if self.versions != response.versions {
+            have_versions_changed = true
+        }
+        self.versions = response.versions;
+        Ok(have_versions_changed)
+    }
 }
 
 impl ModList {
     pub async fn new() -> Result<Self> {
         let request_url = format!("https://thunderstore.io/c/rumble/api/v1/package/");
-        
-        // get the response
         let response_text = reqwest::get(&request_url)
             .await?
             .text()
