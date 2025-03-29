@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 color-eyre = "0.6.3"
+dirs = "6.0.0"
 eframe = {version = "0.31.1"}
 egui_dock = "0.16.0"
 egui_extras = { version = "0.31.1", features = ["all_loaders"] }

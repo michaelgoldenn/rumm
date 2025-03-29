@@ -3,10 +3,11 @@ use eframe::egui::{Ui, WidgetText};
 use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer};
 
 use crate::thunderstore::ModList;
+use crate::user_info::{Config, EnabledMods};
 
-pub fn start(mod_list: ModList) -> eframe::Result {
+pub fn start_gui(mod_list: ModList) -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 720.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -47,7 +48,6 @@ impl eframe::App for MyApp {
 enum CustomTab {
     ThunderstoreBrowser(ModList),
     Tab2,
-    Tab3,
 }
 
 struct MyTabViewer;
@@ -58,8 +58,7 @@ impl TabViewer for MyTabViewer {
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
         match tab {
             CustomTab::ThunderstoreBrowser(_) => "Mod Browser".into(),
-            CustomTab::Tab2 => "Tab 2".into(),
-            CustomTab::Tab3 => "Tab 3".into(),
+            CustomTab::Tab2 => "Mods".into(),
         }
     }
 
@@ -85,15 +84,21 @@ impl TabViewer for MyTabViewer {
                                 .expect("there should always be a first version")
                                 .name
                                 .clone(),
-                        )
+                        );
+                        if ui.add(egui::Button::new("Add Mod")).clicked() {
+                            //println!("Button Pressed!");
+                            // enable the mod
+                            let config = Config::new();
+                            let mut enabled_mods = EnabledMods::new(&config);
+                            if enabled_mods.enable_mod(new_mod, &config).is_err(){
+                                println!("ERROR: could not enable mod: {}", new_mod.name)
+                            }
+                        }
                     });
                 }
             }
             CustomTab::Tab2 => {
                 ui.label("Content of Tab 2");
-            }
-            CustomTab::Tab3 => {
-                ui.label("Content of Tab 3");
             }
         }
     }
@@ -109,7 +114,6 @@ impl MyTabs {
         let tabs = vec![
             CustomTab::ThunderstoreBrowser(thunderstore_mod_list),
             CustomTab::Tab2,
-            CustomTab::Tab3,
         ];
         let dock_state = DockState::new(tabs);
         Self { dock_state }
