@@ -6,6 +6,7 @@ use std::{
 };
 
 use color_eyre::eyre::{Context, Result};
+use eframe::egui::TextBuffer;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
@@ -55,9 +56,9 @@ impl Config {
 /// The options for a mod - if it's enabled, what it's version is, etc.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ModOptions {
-    id: String,
-    version: String,
-    version_lock: bool,
+    pub id: String,
+    pub version: String,
+    pub version_lock: bool,
 }
 impl PartialEq for ModOptions {
     fn eq(&self, other: &Self) -> bool {
@@ -178,10 +179,10 @@ impl LocalModOptions {
     }
 
     // New helper methods for version management
-    pub fn get_mod_options(&self, mod_id: &str) -> Option<&ModOptions> {
+    pub fn get_mod_options(&self, mod_id: String) -> Option<&ModOptions> {
         self.mods.iter().find(|mod_option| mod_option.id == mod_id)
     }
-    pub fn get_mod_options_mut(&mut self, mod_id: &str) -> Option<&mut ModOptions> {
+    pub fn get_mod_options_mut(&mut self, mod_id: String) -> Option<&mut ModOptions> {
         self.mods
             .iter_mut()
             .find(|mod_option| mod_option.id == mod_id)
@@ -192,14 +193,14 @@ impl LocalModOptions {
         version: String,
         config: &Config,
     ) -> Result<()> {
-        if let Some(mod_option) = self.get_mod_options_mut(mod_id) {
+        if let Some(mod_option) = self.get_mod_options_mut(mod_id.to_string()) {
             mod_option.version = version;
             self.save_to_file(&config.config_file)?;
         }
         Ok(())
     }
     pub fn set_version_lock(&mut self, mod_id: &str, locked: bool, config: &Config) -> Result<()> {
-        if let Some(mod_option) = self.get_mod_options_mut(mod_id) {
+        if let Some(mod_option) = self.get_mod_options_mut(mod_id.to_string()) {
             mod_option.version_lock = locked;
             self.save_to_file(&config.config_file)?;
         }

@@ -86,8 +86,13 @@ impl ModCache {
         // Optionally remove the zip file after extraction
         tokio::fs::remove_file(&destination_file).await?;
         // add the config.json to the file as well
-        ModCache::add_mod_config_json(&this_mod, config)?;
-        self.update_self_from_cache();
+        ModCache::add_mod_config_json(&this_mod, &config)?;
+        
+        // update config with the new version
+        let mut local_mod_option = LocalModOptions::new(&config);
+        local_mod_option.enable_mod(&this_mod, &config)?;
+
+        self.update_self_from_cache()?;
         Ok(this_mod.clone())
     }
 
@@ -138,7 +143,7 @@ impl ModCache {
         Ok(())
     }
 
-    fn add_mod_config_json(mod_to_save: &Mod, config: Config) -> Result<()> {
+    fn add_mod_config_json(mod_to_save: &Mod, config: &Config) -> Result<()> {
         // Define the base cache directory.
         let cache_dir = Path::new(&config.mod_cache_directory);
 
