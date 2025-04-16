@@ -1,9 +1,13 @@
+use std::str::FromStr;
+
 use eframe::egui;
 use eframe::egui::{Ui, WidgetText};
 use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer};
+use reqwest::Url;
 
+use crate::mod_cache::ModCache;
 use crate::thunderstore::ModList;
-use crate::user_info::{Config, EnabledMods};
+use crate::user_info::{Config, LocalModOptions};
 
 pub fn start_gui(mod_list: ModList) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -86,13 +90,38 @@ impl TabViewer for MyTabViewer {
                                 .clone(),
                         );
                         if ui.add(egui::Button::new("Add Mod")).clicked() {
-                            //println!("Button Pressed!");
-                            // enable the mod
+                            let ctx = ui.ctx().clone();
+                            let uuid = new_mod.uuid.to_string();
+                            let mod_name = new_mod.name.clone();
                             let config = Config::new();
-                            let mut enabled_mods = EnabledMods::new(&config);
-                            if enabled_mods.enable_mod(new_mod, &config).is_err(){
-                                println!("ERROR: could not enable mod: {}", new_mod.name)
-                            }
+                            let new_mod_clone = new_mod.clone();
+                            let mod_cache = ModCache::new(mod_list);
+
+                            // Spawn the async task
+                            tokio::spawn(async move {
+                                match mod_cache.cache_mod_by_mod_id(&uuid, None).await {
+                                    Ok(_) => {
+                                        //let mut enabled_mods = LocalModOptions::new(&config);
+                                        if mod_cache
+                                            .cache_mod_by_mod_id(
+                                                &new_mod_clone.uuid.to_string(),
+                                                None,
+                                            )
+                                            .await
+                                            .is_err()
+                                        {
+                                            println!("ERROR: could not enable mod: {}", mod_name);
+                                        }
+                                        // Request a repaint after the async operation completes
+                                        ctx.request_repaint();
+                                    }
+                                    Err(e) => {
+                                        eprintln!("ERROR: could not cache mod: {}", mod_name);
+                                        //eyre::Report::from(e).unwrap_err_abort();
+                                        eprintln!("{:?}", color_eyre::eyre::Report::from(e));
+                                    }
+                                }
+                            });
                         }
                     });
                 }
