@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use color_eyre::eyre::Context;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::eyre;
+use dirs::cache_dir;
 use reqwest::Url;
 use rust_search::SearchBuilder;
 
@@ -22,7 +23,7 @@ pub struct ModCache {
     /// Full mod list from thunderstore
     thunderstore_mod_list: ModList,
     /// List of mods in the cache
-    cache_mod_list: Vec<Mod>,
+    pub cache_mod_list: Vec<Mod>,
 }
 impl ModCache {
     pub fn new(mod_list: &ModList) -> Self {
@@ -36,7 +37,7 @@ impl ModCache {
         cache
     }
     /// Adds a mod into the cache using a mod's ID. Will download from Thunderstore
-    pub async fn cache_mod_by_mod_id(&self, id: &String, version: Option<&String>) -> Result<Mod> {
+    pub async fn cache_mod_by_mod_id(&mut self, id: &String, version: Option<&String>) -> Result<Mod> {
         let real_version = self.resolve_mod_version(id, version)?;
         let config = Config::new();
         let _mod_options = LocalModOptions::new(&config);
@@ -47,13 +48,15 @@ impl ModCache {
             .mods
             .iter()
             .find(|x| x.uuid.to_string() == *id)
-            .ok_or_else(|| eyre!("could not convert UUID to string"))?;
+            .ok_or_else(|| eyre!("could not convert UUID to string"))?
+            .clone();
         println!("caching mod: {}", this_mod.name);
         let thunderstore_version = this_mod
             .versions
             .iter()
             .find(|x| x.version_number == real_version)
-            .ok_or_else(|| eyre!("cache_mod_by_mod_id: could not find version"))?;
+            .ok_or_else(|| eyre!("cache_mod_by_mod_id: could not find version"))?
+            .clone(); //I LOVE CLONE(). I LOVE NOT DEALING WITH THE BORROW CHECKER WOOOOO
         // Build the destination directory: <mod_cache_directory>/<mod id>/versions/<version id>
         let mod_id_folder = id;
         let version_id_folder = &thunderstore_version.version_number;
@@ -78,11 +81,13 @@ impl ModCache {
         tokio::fs::write(&destination_file, &bytes).await?;
         // Extract the zip file contents
         //println!("Extracting mod files...");
-        self.extract_zip_file(&destination_file, &destination_dir).await?;
+        self.extract_zip_file(&destination_file, &destination_dir)
+            .await?;
         // Optionally remove the zip file after extraction
         tokio::fs::remove_file(&destination_file).await?;
         // add the config.json to the file as well
-        ModCache::add_mod_config_json(this_mod, config)?;
+        ModCache::add_mod_config_json(&this_mod, config)?;
+        self.update_self_from_cache();
         Ok(this_mod.clone())
     }
 
@@ -192,11 +197,47 @@ impl ModCache {
         }
     }
     /// Adds a mod to the Rumble mods folder
-    pub async fn add_mod_to_rumble_by_url(url: Url, version: String) -> Result<Mod> {
-        todo!()
-    }
-    /// Adds a mod to the Rumble mods folder
-    pub async fn add_mod_to_rumble_by_id(id: String, version: String) -> Result<Mod> {
+    pub async fn add_mod_to_rumble_by_id(
+        &self,
+        id: &String,
+        version: Option<&String>,
+    ) -> Result<Mod> {
+        let config = Config::new();
+        let rumble_mod_directory = config.rumble_directory.join("Mods");
+        let rumble_user_data_directory = config.rumble_directory.join("UserData");
+        let real_version = self.resolve_mod_version(id, version)?;
+        let cache_directory = config.mod_cache_directory.join(id).join(real_version);
+
+        let cache_mods = cache_directory
+            .join("Mods")
+            .read_dir()?
+            .map(|res| res.map(|e| e.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        for file in cache_mods {
+            // for each file in the cache Mods folder
+            fs::copy(file, &rumble_mod_directory)?; // copy mod to rumble folder
+        }
+        let cache_user_data = cache_directory
+            .join("UserData")
+            .read_dir()?
+            .map(|res| res.map(|e| e.path()))
+            .collect::<Result<Vec<_>, std::io::Error>>()?;
+        for file in cache_user_data {
+            let file_name = file.file_name().unwrap();
+            let destination = rumble_user_data_directory.join(file_name);
+
+            // Only copy if destination doesn't exist
+            if !destination.exists() {
+                if file.is_dir() {
+                    fs::create_dir_all(&destination)?;
+                    // If you need to copy directory contents recursively,
+                    // you'd need to implement that logic here
+                } else {
+                    fs::copy(&file, &destination)?;
+                }
+            }
+        }
+
         todo!()
     }
     /// Allows for reverse-searching. When given a path to a mod in the rumble folder, it will find where that mod is in the cache
