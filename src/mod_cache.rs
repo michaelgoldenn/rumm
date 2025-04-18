@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
+use async_recursion::async_recursion;
 use color_eyre::eyre::Context;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::eyre;
@@ -30,12 +31,16 @@ impl ModCache {
             thunderstore_mod_list: mod_list.clone(),
             cache_mod_list: vec![],
         };
-        cache
-            .update_self_from_cache()
-            .expect("This might error sometimes, fix before release!");
+        if let Err(e) = cache.update_self_from_cache() {
+            eprintln!(
+                "mod‑cache incomplete: {}",
+                color_eyre::eyre::Report::from(e)
+            );
+        }
         cache
     }
     /// Adds a mod into the cache using a mod's ID. Will download from Thunderstore
+    #[async_recursion]
     pub async fn cache_mod_by_mod_id(
         &mut self,
         id: &String,
@@ -45,7 +50,6 @@ impl ModCache {
         let config = Config::new();
         let _mod_options = LocalModOptions::new(&config);
         let download_path = &config.mod_cache_directory;
-
         let this_mod = self
             .thunderstore_mod_list
             .mods
@@ -53,6 +57,11 @@ impl ModCache {
             .find(|x| x.uuid.to_string() == *id)
             .ok_or_else(|| eyre!("could not convert UUID to string"))?
             .clone();
+        // check if mod is already cached
+        if self.is_mod_in_cache(&this_mod.uuid, Some(&real_version)) {
+            println!("{} already added to cache, skipping!", this_mod.name);
+            return Ok(this_mod);
+        }
         println!("caching mod: {}", this_mod.name);
         let thunderstore_version = this_mod
             .versions
@@ -93,9 +102,25 @@ impl ModCache {
         // update config with the new version
         let mut local_mod_option = LocalModOptions::new(&config);
         local_mod_option.enable_mod(&this_mod, &config)?;
+        println!("Hello! Just saying hi");
+        self.cache_mod_dependancies(&this_mod, real_version).await?;
 
         self.update_self_from_cache()?;
         Ok(this_mod.clone())
+    }
+
+    async fn cache_mod_dependancies(&mut self, mod_to_cache: &Mod, version: String) -> Result<()> {
+        let dependancies: Vec<Uuid> = {
+            let dependancies_ref = self.get_mod_dependencies(mod_to_cache, Some(&version))?;
+            dependancies_ref.iter().map(|x| x.uuid.clone()).collect()
+        };
+        println!("dependancies: {:?}", dependancies);
+        for dependancy in dependancies {
+            // just downloads the latest version for now, can always extract intended version from the mod's full-name later
+            self.cache_mod_by_mod_id(&dependancy.to_string(), None)
+                .await?;
+        }
+        Ok(())
     }
 
     /// Extract a zip file to the specified directory
@@ -263,51 +288,45 @@ impl ModCache {
 
         todo!()
     }
-    /// Updates the ModCache based on what is present in the actual cache file.
-    pub fn update_self_from_cache(&mut self) -> Result<()> {
-        // Spawn config to get cache folder.
+    /// Updates the in‑memory cache from the on‑disk cache directory.
+    pub fn update_self_from_cache(&mut self) -> Result<Vec<color_eyre::eyre::Report>> {
+        // ── 1. Locate / create the directory ──────────────────────────────
         let config = Config::new();
         let cache = config.mod_cache_directory.as_path();
 
-        // Attempt to read the directory.
-        let dir = match cache.read_dir() {
-            Ok(dir) => dir,
-            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Directory does not exist; create it.
-                fs::create_dir_all(cache).wrap_err_with(|| {
-                    format!("Failed to create mod cache directory at {:?}", cache)
-                })?;
-                // Try reading the directory again.
-                cache
-                    .read_dir()
-                    .wrap_err("Could not read the newly created directory")?
-            }
-            Err(e) => {
-                return Err(e.into());
-            }
-        };
-
-        // Process the entries in the directory.
-        let mod_list: Vec<Result<Mod>> = dir
-            .filter_map(|entry| entry.ok())
-            .map(|entry| {
-                // Get mod from the directory path.
-                ModCache::get_mod_from_dir_in_cache(&entry.path())
-                    .wrap_err_with(|| format!("Error processing mod at {:?}", entry.path()))
-            })
-            .collect();
-
-        let mut new_mod_list: Vec<Mod> = Vec::new();
-        for new_mod in mod_list {
-            new_mod_list.push(new_mod?);
+        if !cache.exists() {
+            fs::create_dir_all(cache)
+                .wrap_err_with(|| format!("Failed to create mod‑cache directory at {:?}", cache))?;
         }
 
-        self.cache_mod_list = new_mod_list;
-        Ok(())
+        let dir = cache
+            .read_dir()
+            .wrap_err_with(|| format!("Could not read directory {:?}", cache))?;
+
+        // ── 2. Scan directory; collect mods, keep individual errors ───────
+        let mut errors = Vec::new();
+
+        let mods: Vec<Mod> = dir
+            .filter_map(|entry| entry.ok()) // ignore IO errors here
+            .filter_map(|entry| {
+                match ModCache::get_mod_from_dir_in_cache(&entry.path()) {
+                    Ok(m) => Some(Ok(m)),
+                    Err(e) => {
+                        errors.push(e); // non‑fatal: remember and keep going
+                        None
+                    }
+                }
+            })
+            .collect::<Result<Vec<_>>>()?; // stops if *this* map yields an Err
+
+        // ── 3. Update self and return ────────────────────────────────────
+        self.cache_mod_list = mods;
+        Ok(errors) // empty vec ⇒ no non‑fatal errors
     }
+
     /// returns a full mod object if given a path like: `[Cache Dir]/[Mod ID]`
-    /// WARNING: RETURNS FULL MOD LIST FROM THUNDERSTORE - use `update_versions_in_mod` to fix them
-    fn get_mod_from_dir_in_cache(path: &Path) -> Result<Mod> {
+    /// WARNING: returns full mod list from thunderstore - use `update_versions_in_mod` if you want the mod's versions to match the cache
+    pub fn get_mod_from_dir_in_cache(path: &Path) -> Result<Mod> {
         if !path.is_dir() {
             return Err(eyre!(
                 "Cannot get mod from a nonexistant directory! Failed with path: {:?}",
@@ -322,7 +341,8 @@ impl ModCache {
         }
         Err(eyre!("mod_info.json not found in mod path: {:?}", path))
     }
-    fn update_versions_in_mod(&self, config: &Config, mod_to_update: &Mod) -> Result<Mod> {
+    /// Removes any versions in the mod that are not present in the cache
+    pub fn update_versions_in_mod(&self, config: &Config, mod_to_update: &Mod) -> Result<Mod> {
         let version_path = self
             .get_mod_file_by_id(config, mod_to_update.uuid)?
             .join("versions");
@@ -338,12 +358,55 @@ impl ModCache {
             .versions
             .iter()
             .filter(|x| file_version_names.contains(&x.version_number))
+            .map(|x| x.clone()) // not good, but works
             .collect();
         let new_mod = Mod {
             versions: updated_versions,
             ..mod_to_update.clone()
         };
         Ok(new_mod)
+    }
+    /// returns the mods that are dependancies of this mod. Throws an error if a mod is listed as a dependency but not found within the thunderstore list.
+    /// If the version is not given, uses the latest version
+    pub fn get_mod_dependencies<'a>(
+        &'a self,
+        mod_to_get: &'a Mod,
+        version_to_get: Option<&String>,
+    ) -> Result<Vec<&'a Mod>> {
+        let real_version =
+            self.resolve_mod_version(&mod_to_get.uuid.to_string(), version_to_get)?;
+        let version = mod_to_get
+            .versions
+            .iter()
+            .find(|v| v.version_number == real_version)
+            .ok_or_else(|| {
+                eyre!(
+                    "Version '{}' not found for '{}'",
+                    real_version,
+                    mod_to_get.name
+                )
+            })?;
+        version
+            .dependencies
+            .iter()
+            .map(|dep_name| {
+                self.get_mod_from_full_mod_name(dep_name).ok_or_else(|| {
+                    eyre!(
+                        "Dependency '{}' declared by '{}' was not found in Thunderstore",
+                        dep_name,
+                        mod_to_get.name
+                    )
+                })
+            })
+            .collect()
+    }
+    pub fn get_mod_from_full_mod_name(&self, full_name: &String) -> Option<&Mod> {
+        self.thunderstore_mod_list.mods.iter().find(|x| {
+            x.versions
+                .iter()
+                .find(|y| y.full_name == *full_name)
+                .is_some()
+        })
     }
     // returns `[mod cache]/[mod id]`
     fn get_mod_file_by_id(&self, config: &Config, id: Uuid) -> Result<PathBuf> {
@@ -356,20 +419,23 @@ impl ModCache {
     fn get_mods_from_cache(&self) -> &Vec<Mod> {
         &self.cache_mod_list
     }
-
-    pub fn is_mod_in_cache(&self, uuid: Uuid) -> bool {
-        self.cache_mod_list.iter().any(|x| x.uuid == uuid)
+    // If no string is passed, will return true for any version. Otherwise, will only return true if that version is present in the cache
+    pub fn is_mod_in_cache(&self, uuid: &Uuid, _version: Option<&String>) -> bool {
+        self.cache_mod_list
+            .iter()
+            .find(|m| m.uuid == *uuid)
+            .map_or(false, |m| {
+                self.update_versions_in_mod(&Config::new(), m).is_ok()
+            })
     }
+
     // Returns None if the mod is not in cache, returns Some(false) if the version is not in cache
-    pub fn is_mod_version_in_cache(&mut self, uuid: &Uuid, version: &String) -> Option<bool> {
-        self.update_self_from_cache();
+    pub fn does_mod_have_version(&self, mod_to_check: &Mod, version: &String) -> Option<bool> {
         Some(
-            self.cache_mod_list
-                .iter()
-                .find(|x| x.uuid == *uuid)?
+            mod_to_check
                 .versions
                 .iter()
-                .any(|x| x.version_number == *version),
+                .any(|v| &v.version_number == version),
         )
     }
 }

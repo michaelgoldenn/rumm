@@ -28,7 +28,7 @@ impl LocalModsTab {
 
     /// Draws one frame of the tab. Remains **synchronous**; heavy work is off‑loaded
     /// to a dedicated blocking thread so the UI never stalls.
-    pub fn ui(&mut self, ui: &mut Ui) {
+    pub fn ui(&mut self, ui: &mut Ui) -> Result<()> {
         // ←–––––––– Check whether the background thread has finished ––––––––→
         if let Some(rx) = &self.result_rx {
             while let Ok(r) = rx.try_recv() {
@@ -41,23 +41,24 @@ impl LocalModsTab {
         // ←–––––––– Collect version changes selected by the user ––––––––→
         let mut pending_updates: Vec<(Mod, String)> = Vec::new();
 
-        for this_mod in &self.cache.cache_mod_list {
+        for original_mod_from_thunderstore in &self.cache.cache_mod_list {
+            let mod_from_cache = self.cache.update_versions_in_mod(&Config::new(), &original_mod_from_thunderstore)?;
             let current = self
                 .options
-                .get_mod_options_mut(this_mod.uuid.to_string())
-                .expect(&format!("Mod options file not found for {}", this_mod.name));
+                .get_mod_options_mut(original_mod_from_thunderstore.uuid.to_string())
+                .expect(&format!("Mod options file not found for {}", original_mod_from_thunderstore.name));
 
             ui.horizontal(|ui| {
-                if let Some(first) = this_mod.versions.first() {
+                if let Some(first) = original_mod_from_thunderstore.versions.first() {
                     ui.image(first.icon.clone());
                     ui.label(&first.name);
                 }
 
                 let old_version = current.version.clone();
-                let response = egui::ComboBox::from_id_salt(this_mod.uuid)
+                let response = egui::ComboBox::from_id_salt(original_mod_from_thunderstore.uuid)
                     .selected_text(&current.version)
                     .show_ui(ui, |ui| {
-                        for v in &this_mod.versions {
+                        for v in &original_mod_from_thunderstore.versions {
                             ui.selectable_value(
                                 &mut current.version,
                                 v.version_number.clone(),
@@ -67,7 +68,7 @@ impl LocalModsTab {
                     });
 
                 if old_version != current.version {
-                    pending_updates.push((this_mod.clone(), current.version.clone()));
+                    pending_updates.push((mod_from_cache.clone(), current.version.clone()));
                 }
             });
         }
@@ -88,6 +89,7 @@ impl LocalModsTab {
                 }
             });
         }
+        Ok(())
     }
 }
 
@@ -104,7 +106,8 @@ fn change_mod_version_blocking(
 
     let config = Config::new();
     rt.block_on(async {
-        match cache.is_mod_version_in_cache(&mod_to_change.uuid, &new_version) {
+        println!("Checking version: {}, mod versions: {}", &new_version, &mod_to_change.versions.len());
+        match cache.does_mod_have_version(&mod_to_change, &new_version) {
             None | Some(false) => {
                 println!("Adding mod to cache!");
                 cache
@@ -112,7 +115,7 @@ fn change_mod_version_blocking(
                     .await?;
             }
             Some(true) => {
-                println!("Mod Already in cache!");
+                println!("Mod Already in cache! Versions: {:?}", mod_to_change.versions.iter().map(|x| x.version_number.clone()).collect::<Vec<String>>());
                 options.set_mod_version(&mod_to_change.uuid.to_string(), new_version, &config);
             }
         }

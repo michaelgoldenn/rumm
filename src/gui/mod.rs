@@ -74,7 +74,7 @@ impl TabViewer for MyTabViewer {
     fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
         match tab {
             CustomTab::ThunderstoreBrowser(list) => draw_thunderstore_browser(ui, list),
-            CustomTab::LocalModList(tab) => tab.ui(ui),
+            CustomTab::LocalModList(tab) => tab.ui(ui).expect("Should not have an expect here, change before release"),
         }
     }
 }
@@ -88,8 +88,8 @@ impl MyTabs {
         // Create initial tabs using the mod list.
         let local_options = LocalModOptions::new(&Config::new());
         let tabs = vec![
-            CustomTab::ThunderstoreBrowser(thunderstore_mod_list.clone()),
             CustomTab::LocalModList(LocalModsTab::new(&thunderstore_mod_list, local_options)),
+            CustomTab::ThunderstoreBrowser(thunderstore_mod_list.clone()),
         ];
         let dock_state = DockState::new(tabs);
         Self { dock_state }
