@@ -1,13 +1,10 @@
 // src/gui/gui.rs
 
-use std::str::FromStr;
 
 use eframe::egui;
 use eframe::egui::{Ui, WidgetText};
-use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer};
-use reqwest::Url;
+use egui_dock::{DockArea, DockState, Style, TabViewer};
 
-use crate::mod_cache::ModCache;
 use crate::thunderstore::ModList;
 use crate::user_info::{Config, LocalModOptions};
 
@@ -17,7 +14,7 @@ mod local_mod_list;
 //use crate:gui::LocalModList;
 
 use thunderstore_browser::draw_thunderstore_browser;
-use local_mod_list::draw_local_mod_list;
+use local_mod_list::LocalModsTab;
 
 pub fn start_gui(mod_list: ModList) -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -56,10 +53,9 @@ impl eframe::App for MyApp {
     }
 }
 
-#[derive(Clone)]
 pub enum CustomTab {
     ThunderstoreBrowser(ModList),
-    LocalModList(ModList),
+    LocalModList(LocalModsTab),
 }
 
 /// This custom tab viewer delegates each tab’s UI to the respective module.
@@ -77,14 +73,8 @@ impl TabViewer for MyTabViewer {
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
         match tab {
-            CustomTab::ThunderstoreBrowser(mod_list) => {
-                // Delegate UI rendering to the ThunderstoreBrowser module.
-                draw_thunderstore_browser(ui, mod_list);
-            }
-            CustomTab::LocalModList(mod_list) => {
-                // Delegate UI rendering to the LocalModList module.
-                draw_local_mod_list(ui, mod_list);
-            }
+            CustomTab::ThunderstoreBrowser(list) => draw_thunderstore_browser(ui, list),
+            CustomTab::LocalModList(tab) => tab.ui(ui),
         }
     }
 }
@@ -96,9 +86,10 @@ struct MyTabs {
 impl MyTabs {
     pub fn new(thunderstore_mod_list: ModList) -> Self {
         // Create initial tabs using the mod list.
+        let local_options = LocalModOptions::new(&Config::new());
         let tabs = vec![
             CustomTab::ThunderstoreBrowser(thunderstore_mod_list.clone()),
-            CustomTab::LocalModList(thunderstore_mod_list),
+            CustomTab::LocalModList(LocalModsTab::new(&thunderstore_mod_list, local_options)),
         ];
         let dock_state = DockState::new(tabs);
         Self { dock_state }

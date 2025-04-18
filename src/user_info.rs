@@ -6,8 +6,6 @@ use std::{
 };
 
 use color_eyre::eyre::{Context, Result};
-use eframe::egui::TextBuffer;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::thunderstore::Mod;
@@ -54,7 +52,7 @@ impl Config {
     }
 }
 /// The options for a mod - if it's enabled, what it's version is, etc.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModOptions {
     pub id: String,
     pub version: String,
@@ -67,7 +65,7 @@ impl PartialEq for ModOptions {
 }
 
 /// Stores options for downloaded mods, lets you enable the mod, set the version, etc. -
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LocalModOptions {
     mods: Vec<ModOptions>,
 }

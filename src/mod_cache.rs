@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -5,20 +6,18 @@ use std::path::PathBuf;
 use color_eyre::eyre::Context;
 use color_eyre::eyre::Result;
 use color_eyre::eyre::eyre;
-use dirs::cache_dir;
-use reqwest::Url;
 use rust_search::SearchBuilder;
+use uuid::Uuid;
 
 use crate::thunderstore::Mod;
 use crate::thunderstore::ModList;
-use crate::thunderstore::Version;
 use crate::user_info::Config;
 use crate::user_info::LocalModOptions;
 
 /// Stores local copies of mods, and handles putting mods into and out of the rumble directory.
 /// Each Entry is stored as `[Cache Directory]/[Mod ID]/{mod_info.json, versions/{latest, 1.0.0}}`
 /// Then within each version the actual files are placed
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModCache {
     /// Full mod list from thunderstore
     thunderstore_mod_list: ModList,
@@ -37,7 +36,11 @@ impl ModCache {
         cache
     }
     /// Adds a mod into the cache using a mod's ID. Will download from Thunderstore
-    pub async fn cache_mod_by_mod_id(&mut self, id: &String, version: Option<&String>) -> Result<Mod> {
+    pub async fn cache_mod_by_mod_id(
+        &mut self,
+        id: &String,
+        version: Option<&String>,
+    ) -> Result<Mod> {
         let real_version = self.resolve_mod_version(id, version)?;
         let config = Config::new();
         let _mod_options = LocalModOptions::new(&config);
@@ -66,9 +69,8 @@ impl ModCache {
             .join(version_id_folder);
         // Create the destination directory if it does not exist.
         tokio::fs::create_dir_all(&destination_dir).await?;
-        // Extract a filename from the download URL. For simplicity, we take the last part of the URL.
         let download_url = &thunderstore_version.download_url;
-        let file_name = "extractme.zip"; //download_url.split('/').last().unwrap_or("mod.zip");
+        let file_name = "extractme.zip";
         let destination_file = destination_dir.join(file_name);
         // download the mod file
         let response = reqwest::get(download_url).await?;
@@ -87,7 +89,7 @@ impl ModCache {
         tokio::fs::remove_file(&destination_file).await?;
         // add the config.json to the file as well
         ModCache::add_mod_config_json(&this_mod, &config)?;
-        
+
         // update config with the new version
         let mut local_mod_option = LocalModOptions::new(&config);
         local_mod_option.enable_mod(&this_mod, &config)?;
@@ -304,6 +306,7 @@ impl ModCache {
         Ok(())
     }
     /// returns a full mod object if given a path like: `[Cache Dir]/[Mod ID]`
+    /// WARNING: RETURNS FULL MOD LIST FROM THUNDERSTORE - use `update_versions_in_mod` to fix them
     fn get_mod_from_dir_in_cache(path: &Path) -> Result<Mod> {
         if !path.is_dir() {
             return Err(eyre!(
@@ -319,7 +322,54 @@ impl ModCache {
         }
         Err(eyre!("mod_info.json not found in mod path: {:?}", path))
     }
+    fn update_versions_in_mod(&self, config: &Config, mod_to_update: &Mod) -> Result<Mod> {
+        let version_path = self
+            .get_mod_file_by_id(config, mod_to_update.uuid)?
+            .join("versions");
+        let mut file_version_names: Vec<String> = vec![];
+        for dirent in fs::read_dir(&version_path)? {
+            let name = dirent?
+                .file_name()
+                .into_string()
+                .map_err(|bad: OsString| eyre!("file name is not valid UTF‑8: {:?}", bad))?; // <- converts the error
+            file_version_names.push(name);
+        }
+        let updated_versions = mod_to_update
+            .versions
+            .iter()
+            .filter(|x| file_version_names.contains(&x.version_number))
+            .collect();
+        let new_mod = Mod {
+            versions: updated_versions,
+            ..mod_to_update.clone()
+        };
+        Ok(new_mod)
+    }
+    // returns `[mod cache]/[mod id]`
+    fn get_mod_file_by_id(&self, config: &Config, id: Uuid) -> Result<PathBuf> {
+        let path = config.mod_cache_directory.join(id.to_string());
+        if !path.exists() {
+            return Err(eyre!("Could not find mod file in cache!"));
+        }
+        Ok(path)
+    }
     fn get_mods_from_cache(&self) -> &Vec<Mod> {
         &self.cache_mod_list
+    }
+
+    pub fn is_mod_in_cache(&self, uuid: Uuid) -> bool {
+        self.cache_mod_list.iter().any(|x| x.uuid == uuid)
+    }
+    // Returns None if the mod is not in cache, returns Some(false) if the version is not in cache
+    pub fn is_mod_version_in_cache(&mut self, uuid: &Uuid, version: &String) -> Option<bool> {
+        self.update_self_from_cache();
+        Some(
+            self.cache_mod_list
+                .iter()
+                .find(|x| x.uuid == *uuid)?
+                .versions
+                .iter()
+                .any(|x| x.version_number == *version),
+        )
     }
 }

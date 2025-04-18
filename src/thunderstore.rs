@@ -1,6 +1,5 @@
-use std::{fs::File, io::Write, str::FromStr};
 
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre::Result;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -70,6 +69,8 @@ impl Mod {
 }
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     #[tokio::test]
     async fn test() -> Result<()> {

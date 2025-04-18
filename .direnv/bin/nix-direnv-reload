@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -e
-if [[ ! -d "/home/michael/projects/rumm" ]]; then
+if [[ ! -d "/home/michael/projects/rumble-mod-manager" ]]; then
   echo "Cannot find source directory; Did you move it?"
-  echo "(Looking for "/home/michael/projects/rumm")"
+  echo "(Looking for "/home/michael/projects/rumble-mod-manager")"
   echo 'Cannot force reload with this script - use "direnv reload" manually and then try again'
   exit 1
 fi
 
 # rebuild the cache forcefully
-_nix_direnv_force_reload=1 direnv exec "/home/michael/projects/rumm" true
+_nix_direnv_force_reload=1 direnv exec "/home/michael/projects/rumble-mod-manager" true
 
 # Update the mtime for .envrc.
 # This will cause direnv to reload again - but without re-building.
-touch "/home/michael/projects/rumm/.envrc"
+touch "/home/michael/projects/rumble-mod-manager/.envrc"
 
 # Also update the timestamp of whatever profile_rc we have.
 # This makes sure that we know we are up to date.
-touch -r "/home/michael/projects/rumm/.envrc" "/home/michael/projects/rumm/.direnv"/*.rc
+touch -r "/home/michael/projects/rumble-mod-manager/.envrc" "/home/michael/projects/rumble-mod-manager/.direnv"/*.rc

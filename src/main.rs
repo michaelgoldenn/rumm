@@ -1,4 +1,3 @@
-use std::fmt::Display;
 
 use color_eyre::eyre::{eyre, Result};
 
