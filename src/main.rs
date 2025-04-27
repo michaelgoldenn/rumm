@@ -5,6 +5,7 @@ mod gui;
 mod thunderstore;
 mod user_info;
 mod mod_cache;
+mod updater;
 
 use thunderstore::ModList;
 use gui::start_gui;
