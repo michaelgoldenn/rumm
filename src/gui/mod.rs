@@ -8,13 +8,13 @@ use egui_dock::{DockArea, DockState, Style, TabViewer};
 use crate::thunderstore::ModList;
 use crate::user_info::{Config, LocalModOptions};
 
-mod thunderstore_browser;
-mod local_mod_list;
+mod thunderstore_browser_ui;
+mod local_mod_list_ui;
 //use crate::gui::ThunderstoreBrowser;
 //use crate:gui::LocalModList;
 
-use thunderstore_browser::draw_thunderstore_browser;
-use local_mod_list::LocalModsTab;
+use thunderstore_browser_ui::draw_thunderstore_browser;
+use local_mod_list_ui::LocalModsTab;
 
 pub fn start_gui(mod_list: ModList) -> eframe::Result {
     let options = eframe::NativeOptions {
