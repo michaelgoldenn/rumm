@@ -16,7 +16,8 @@ This project focuses mostly on working in the background. After adding mods to t
 ## Planned Features
 - Self-updating for future releases
 - Auto-updating mods
-- Detection and integration of manually installed mods
+- Support for installing mods locally (not from Thunderstore)
+- Detecting manually installed Thunderstore mods
 
 ## Potential possible features (not immediately planned)
 - Profiles for different sets of mods
