@@ -420,12 +420,17 @@ impl ModCache {
         &self.cache_mod_list
     }
     // If no string is passed, will return true for any version. Otherwise, will only return true if that version is present in the cache
-    pub fn is_mod_in_cache(&self, uuid: &Uuid, _version: Option<&String>) -> bool {
+    pub fn is_mod_in_cache(&self, uuid: &Uuid, version: Option<&String>) -> bool {
         self.cache_mod_list
             .iter()
             .find(|m| m.uuid == *uuid)
             .map_or(false, |m| {
-                self.update_versions_in_mod(&Config::new(), m).is_ok()
+                self.update_versions_in_mod(&Config::new(), m)
+                    .is_ok_and(|x| {
+                        x.versions
+                            .iter()
+                            .any(|v| v.version_number == *version.unwrap())
+                    })
             })
     }
 

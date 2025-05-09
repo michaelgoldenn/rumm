@@ -3,10 +3,12 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use color_eyre::eyre::{Context, Result};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::thunderstore::Mod;
 
@@ -57,6 +59,7 @@ pub struct ModOptions {
     pub id: String,
     pub version: String,
     pub version_lock: bool,
+    enabled: bool,
 }
 impl PartialEq for ModOptions {
     fn eq(&self, other: &Self) -> bool {
@@ -90,7 +93,7 @@ impl LocalModOptions {
 
                     // Save an empty file
                     enabled_mods
-                        .save_to_file(&config.config_file)
+                        .save_to_file(&config)
                         .wrap_err("Failed to create enabled mods file");
                 } else {
                     // For other types of errors, return the original error
@@ -101,79 +104,70 @@ impl LocalModOptions {
             }
         }
     }
+    fn get_mod(&self, id: Uuid) -> Option<&ModOptions> {
+        self.mods.iter().find(|x| x.id == id.to_string())
+    }
+    fn get_mod_mut(&mut self, id: Uuid) -> Option<&mut ModOptions> {
+        self.mods.iter_mut().find(|x| x.id == id.to_string())
+    }
 
     pub fn is_mod_enabled(&self, this_mod: &Mod) -> Result<bool> {
-        // Check if any ModOptions in self.mods has matching id to this_mod's uuid
         Ok(self
-            .mods
-            .iter()
-            .any(|mod_option| mod_option.id == this_mod.uuid.to_string()))
+            .get_mod_options(this_mod.uuid.to_string())
+            .map_or(false, |opt| opt.enabled))
     }
 
     pub fn enable_mod(&mut self, mod_to_enable: &Mod, config: &Config) -> Result<()> {
-        // Only add if not already present
-        if !self
-            .mods
-            .iter()
-            .any(|mod_option| mod_option.id == mod_to_enable.uuid.to_string())
-        {
-            // Create new ModOptions with default values
-            let mod_options = ModOptions {
-                id: mod_to_enable.uuid.to_string(),
-                version: mod_to_enable
-                    .versions
-                    .first()
-                    .expect("mods should always have at least one version")
-                    .version_number
-                    .clone(), // Using the mod's current version
-                version_lock: false, // Default to not locked
-            };
-            self.mods.push(mod_options);
+        let mod_id = mod_to_enable.uuid.to_string();
+
+        match self.get_mod_options_mut(mod_id.clone()) {
+            Some(mod_option) => mod_option.enabled = true,
+            None => {
+                let mod_options = ModOptions {
+                    id: mod_id,
+                    version: mod_to_enable
+                        .versions
+                        .first()
+                        .expect("mods should always have at least one version")
+                        .version_number
+                        .clone(),
+                    version_lock: false,
+                    enabled: true,
+                };
+                self.mods.push(mod_options);
+            }
         }
-        self.save_to_file(&config.config_file)?;
+
+        self.save_to_file(&config)?;
         Ok(())
     }
 
     pub fn disable_mod(&mut self, mod_to_disable: &Mod, config: &Config) -> Result<()> {
-        // Remove any ModOptions with matching id
-        self.mods
-            .retain(|mod_option| mod_option.id != mod_to_disable.uuid.to_string());
-        self.save_to_file(&config.config_file)?;
+        if let Some(mod_option) = self.get_mod_options_mut(mod_to_disable.uuid.to_string()) {
+            mod_option.enabled = false;
+        }
+        self.save_to_file(&config)?;
         Ok(())
     }
 
-    fn save_to_file(&self, path: &Path) -> Result<()> {
+    pub fn set_mod_enabled(&mut self, mod_to_change: &Mod, config: &Config, enable: bool) -> Result<()> {
+        match enable {
+            true => self.enable_mod(mod_to_change, config),
+            false => self.disable_mod(mod_to_change, config),
+        }
+    }
+
+    pub fn save_to_file(&self, config: &Config) -> Result<()> {
         // Serialize the entire LocalModOptions structure
         let contents = serde_json::to_string_pretty(&self)?;
-        fs::write(path, contents)?;
+        fs::write(&config.config_file, contents)?;
         Ok(())
     }
 
     fn load_from_file(&mut self, path: &Path) -> Result<()> {
         let contents = fs::read_to_string(path)?;
-        // Try to deserialize as the new format first
-        match serde_json::from_str::<LocalModOptions>(&contents) {
-            Ok(loaded) => {
-                self.mods = loaded.mods;
-                Ok(())
-            }
-            // If that fails, try to deserialize as the old format (array of strings)
-            Err(_) => {
-                let old_ids: Vec<String> = serde_json::from_str(&contents)?;
-
-                // Convert old format to new format
-                self.mods = old_ids
-                    .into_iter()
-                    .map(|id| ModOptions {
-                        id,
-                        version: String::new(), // Empty version as we don't have this info
-                        version_lock: false,    // Default to not locked
-                    })
-                    .collect();
-
-                Ok(())
-            }
-        }
+        self.mods = serde_json::from_str::<LocalModOptions>(&contents)?.mods;
+        Ok(())
     }
 
     // New helper methods for version management
@@ -187,29 +181,32 @@ impl LocalModOptions {
     }
     pub fn set_mod_version(
         &mut self,
-        mod_id: &str,
+        mod_id: &Uuid,
         version: String,
         config: &Config,
     ) -> Result<()> {
         if let Some(mod_option) = self.get_mod_options_mut(mod_id.to_string()) {
             mod_option.version = version;
-            self.save_to_file(&config.config_file)?;
+            self.save_to_file(&config)?;
         }
         Ok(())
     }
-    pub fn set_version_lock(&mut self, mod_id: &str, locked: bool, config: &Config) -> Result<()> {
+    pub fn set_version_lock(&mut self, mod_id: &Uuid, locked: bool, config: &Config) -> Result<()> {
         if let Some(mod_option) = self.get_mod_options_mut(mod_id.to_string()) {
             mod_option.version_lock = locked;
-            self.save_to_file(&config.config_file)?;
+            self.save_to_file(&config)?;
         }
         Ok(())
     }
-}
-
-// Example function to get default path
-pub fn default_save_path() -> PathBuf {
-    let mut path = PathBuf::from("."); // Start with project directory
-    path.push("config");
-    path.push("enabled_mods.json"); // Consider .json extension
-    path
+    pub fn get_version_lock(&self, mod_id: &Uuid) -> Option<bool> {
+        Some(self.get_mod_options(mod_id.to_string())?.version_lock)
+    }
+    pub fn get_enabled_mod_ids(&self) -> Vec<Uuid> {
+        return self
+            .mods
+            .iter()
+            .filter(|x| x.enabled)
+            .map(|x| Uuid::from_str(&x.id).expect("There should only be valid UUIDs in the list"))
+            .collect();
+    }
 }

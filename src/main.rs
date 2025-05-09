@@ -1,14 +1,14 @@
 
 use color_eyre::eyre::{eyre, Result};
 
-mod gui;
+mod egui;
 mod thunderstore;
 mod user_info;
 mod mod_cache;
 mod updater;
 
 use thunderstore::ModList;
-use gui::start_gui;
+use egui::start_gui;
 
 #[tokio::main]
 async fn main() -> Result<()> {

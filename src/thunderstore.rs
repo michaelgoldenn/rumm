@@ -4,6 +4,7 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// Just the straight mod data deserialized from Thunderstore's API request
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Mod {
     #[serde(rename(deserialize = "uuid4", serialize = "uuid4"))]

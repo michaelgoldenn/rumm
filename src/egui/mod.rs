@@ -1,6 +1,3 @@
-// src/gui/gui.rs
-
-
 use eframe::egui;
 use eframe::egui::{Ui, WidgetText};
 use egui_dock::{DockArea, DockState, Style, TabViewer};
