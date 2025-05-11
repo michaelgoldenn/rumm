@@ -1,10 +1,10 @@
 // src/gui/LocalModList.rs
 
-use crate::thunderstore::{Mod, ModList};
+use crate::thunderstore::{Mod, ModList, Version};
 use crate::user_info::LocalModOptions;
 use crate::{mod_cache::ModCache, user_info::Config};
 use color_eyre::eyre::{Result, eyre};
-use eframe::egui::{self, Ui};
+use eframe::egui::{self, Button, Checkbox, Image, Label, Ui};
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -22,6 +22,7 @@ pub struct LocalModsTab {
 enum ChangeType {
     Enabled(bool),
     Version(String),
+    RemoveVersion(Version),
     VersionLock(bool),
 }
 
@@ -47,87 +48,37 @@ impl LocalModsTab {
             }
         }
 
+        // we need to update the cache regularly
+        self.cache.update_self_from_cache();
+
         // collect version changes selected by the user
         let mut pending_updates: Vec<(Mod, String)> = Vec::new();
         let config = Config::new();
 
-        /* // Debug prints all of the enabled mods each frame
-        println!(
-            "Enabled Mods: {:?}",
-            local_mod_options
-                .get_enabled_mod_ids()
-                .iter()
-                .map(|x| self
-                    .cache
-                    .cache_mod_list
-                    .iter()
-                    .find(|y| y.uuid == *x)
-                    .map(|z| z.name.clone())
-                    .or(Some(String::from("Unknown")))
-                    .unwrap())
-                .collect::<Vec<String>>()
-        ); */
-
-        for original_mod_from_thunderstore in &self.cache.cache_mod_list {
-            let mod_from_cache = self
-                .cache
-                .update_versions_in_mod(&config, &original_mod_from_thunderstore)?;
-            let is_mod_enabled = self.options.is_mod_enabled(&mod_from_cache)?;
-            let current = self
-                .options
-                .get_mod_options_mut(original_mod_from_thunderstore.uuid.to_string())
-                .expect(&format!(
-                    "Mod options file not found for {}",
-                    original_mod_from_thunderstore.name
-                ))
-                .clone();
-
-            ui.horizontal(|ui| {
-                if let Some(first) = original_mod_from_thunderstore.versions.first() {
-                    // image
-                    ui.image(first.icon.clone());
-                    // name
-                    ui.label(&first.name);
-                    //version lock checkbox
-                    let mut mod_version_lock = current.version_lock.clone();
-                    let checkbox = ui.checkbox(&mut mod_version_lock, "version locked");
-                    if checkbox.changed() {
-                        self.pending_changes.push((
-                            mod_from_cache.clone(),
-                            ChangeType::VersionLock(mod_version_lock),
-                        ));
+        egui::ScrollArea::vertical().show(ui, |ui| -> Result<()> {
+            let grid_result = egui::Grid::new("Mod Grid").striped(true).show(ui, |ui| {
+                for original_mod_from_thunderstore in &self.cache.cache_mod_list {
+                    let mod_from_cache = match self
+                        .cache
+                        .prune_extra_versions_from_mod(&config, &original_mod_from_thunderstore)
+                    {
+                        Ok(m) => m,
+                        Err(e) => return Err(e),
                     };
-                }
-                // version selector
-                let old_version = current.version.clone();
-                let combo_box = egui::ComboBox::from_id_salt(original_mod_from_thunderstore.uuid)
-                    .selected_text(&current.version);
-                // wrap combobox in enabled check to let it be disabled when auto-updates are off
-                let mut selected_version = current.version.clone();
-                ui.add_enabled_ui(
-                    self.options
-                        .get_version_lock(&mod_from_cache.uuid)
-                        .unwrap_or(false),
-                    |ui| {
-                        combo_box.show_ui(ui, |ui| {
-                            for v in &original_mod_from_thunderstore.versions {
-                                ui.selectable_value(
-                                    &mut selected_version,
-                                    v.version_number.clone(),
-                                    &v.version_number,
-                                );
-                            }
-                        });
-                    },
-                );
-                if old_version != selected_version {
-                    pending_updates.push((mod_from_cache.clone(), selected_version.clone()));
-                    self.pending_changes.push((
-                        mod_from_cache.clone(),
-                        ChangeType::Version(selected_version),
-                    ));
-                }
-                if let Some(first) = original_mod_from_thunderstore.versions.first() {
+                    let is_mod_enabled = match self.options.is_mod_enabled(&mod_from_cache) {
+                        Ok(enabled) => enabled,
+                        Err(e) => return Err(e),
+                    };
+                    let current = self
+                        .options
+                        .get_mod_options_mut(original_mod_from_thunderstore.uuid.to_string())
+                        .ok_or(eyre!(
+                            "Mod options file not found for {}",
+                            original_mod_from_thunderstore.name
+                        ))?
+                        .clone();
+
+                    // Enabled checkbox
                     let mut mod_enabled_mut = is_mod_enabled.clone();
                     ui.checkbox(&mut mod_enabled_mut, "Enabled");
                     // just a hacky way to convert from the `mut bool` to the `enable/disable mod` functions
@@ -135,9 +86,90 @@ impl LocalModsTab {
                         self.pending_changes
                             .push((mod_from_cache.clone(), ChangeType::Enabled(mod_enabled_mut)));
                     }
+
+                    if let Some(first) = original_mod_from_thunderstore.versions.first() {
+                        // image
+                        ui.add_enabled(is_mod_enabled, Image::new(first.icon.clone()));
+                        // name
+                        ui.add_enabled(is_mod_enabled, Label::new(&first.name));
+                        //ui.label(&first.name);
+                        //version lock checkbox
+                        let mut auto_update = !current.version_lock.clone();
+                        let checkbox = ui.add_enabled(
+                            is_mod_enabled,
+                            Checkbox::new(&mut auto_update, "auto-update"),
+                        );
+                        if checkbox.changed() {
+                            self.pending_changes.push((
+                                mod_from_cache.clone(),
+                                ChangeType::VersionLock(!auto_update),
+                            ));
+                        };
+                    }
+                    // version selector
+                    let old_version = current.version.clone();
+                    let combo_box =
+                        egui::ComboBox::from_id_salt(original_mod_from_thunderstore.uuid)
+                            .selected_text(&current.version);
+                    // wrap combobox in enabled check to let it be disabled when auto-updates are off
+                    let mut selected_version = current.version.clone();
+                    ui.add_enabled_ui(
+                        self.options
+                            .get_version_lock(&mod_from_cache.uuid)
+                            .unwrap_or(false)
+                            && is_mod_enabled,
+                        |ui| {
+                            combo_box.show_ui(ui, |ui| {
+                                for v in &original_mod_from_thunderstore.versions {
+                                    ui.horizontal(|ui| {
+                                        ui.selectable_value(
+                                            &mut selected_version,
+                                            v.version_number.clone(),
+                                            &v.version_number,
+                                        );
+                                        // show delete button if the mod is available locally
+                                        if mod_from_cache
+                                            .versions
+                                            .iter()
+                                            .any(|x| x.version_number == v.version_number)
+                                        {
+                                            if ui
+                                                .add(Button::image(egui::include_image!(
+                                                    "./icons/trash.svg"
+                                                )))
+                                                .clicked()
+                                            {
+                                                //self.cache.remove_old_versions_from_cache(&config, &mod_from_cache);
+                                                self.pending_changes.push((
+                                                    mod_from_cache.clone(),
+                                                    ChangeType::RemoveVersion(v.clone()),
+                                                ));
+                                            };
+                                        }
+                                    });
+                                }
+                            });
+                        },
+                    );
+                    if old_version != selected_version {
+                        pending_updates.push((mod_from_cache.clone(), selected_version.clone()));
+                        self.pending_changes.push((
+                            mod_from_cache.clone(),
+                            ChangeType::Version(selected_version),
+                        ));
+                    }
+                    ui.end_row();
                 }
+                Ok(())
             });
-        }
+
+            // Handle any errors from the grid
+            if let Err(e) = grid_result.inner {
+                return Err(e);
+            }
+
+            Ok(()) // Add this to return Ok(()) from the ScrollArea closure
+        });
 
         // start the worker if we have a job for it
         if !pending_updates.is_empty() {
@@ -174,6 +206,10 @@ impl LocalModsTab {
                 ChangeType::Version(version) => {
                     { mod_options.set_mod_version(&mod_stuff.uuid, version.to_string(), &config) }?
                 }
+                ChangeType::RemoveVersion(version) => {
+                    self.cache
+                        .remove_version_from_cache(&config, mod_stuff, version.clone());
+                }
             }
         }
         self.pending_changes.clear();
@@ -183,7 +219,7 @@ impl LocalModsTab {
     }
 }
 
-/// Runs inside the background thread. It blocks, but that is fine off the UI thread.
+/// runs inside the background thread
 fn change_mod_version_blocking(
     cache: &mut ModCache,
     options: &mut LocalModOptions,

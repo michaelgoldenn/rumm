@@ -1,12 +1,13 @@
 // src/gui/ThunderstoreBrowser.rs
 
+use color_eyre::eyre::Result;
 use eframe::egui::{self, Ui};
 use crate::thunderstore::ModList;
 use crate::mod_cache::ModCache;
 use crate::user_info::Config;
 
 /// Renders the Thunderstore Browser tab UI.
-pub fn draw_thunderstore_browser(ui: &mut Ui, mod_list: &mut ModList) {
+pub fn draw_thunderstore_browser(ui: &mut Ui, mod_list: &mut ModList) -> Result<()> {
     // Iterate over mods and create the UI elements.
     for new_mod in &mod_list.mods {
         ui.horizontal(|ui| {
@@ -61,4 +62,5 @@ pub fn draw_thunderstore_browser(ui: &mut Ui, mod_list: &mut ModList) {
             }
         });
     }
+    Ok(())
 }

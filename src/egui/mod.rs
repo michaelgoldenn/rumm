@@ -1,14 +1,15 @@
 use eframe::egui;
 use eframe::egui::{Ui, WidgetText};
 use egui_dock::{DockArea, DockState, Style, TabViewer};
+use settings_ui::draw_settings_ui;
+use color_eyre::eyre::Result;
 
 use crate::thunderstore::ModList;
 use crate::user_info::{Config, LocalModOptions};
 
 mod thunderstore_browser_ui;
 mod local_mod_list_ui;
-//use crate::gui::ThunderstoreBrowser;
-//use crate:gui::LocalModList;
+mod settings_ui;
 
 use thunderstore_browser_ui::draw_thunderstore_browser;
 use local_mod_list_ui::LocalModsTab;
@@ -19,7 +20,7 @@ pub fn start_gui(mod_list: ModList) -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "My egui App",
+        "rumm",
         options,
         Box::new(move |cc| {
             // Install image loaders, etc.
@@ -53,10 +54,37 @@ impl eframe::App for MyApp {
 pub enum CustomTab {
     ThunderstoreBrowser(ModList),
     LocalModList(LocalModsTab),
+    Settings(Config)
 }
 
-/// This custom tab viewer delegates each tab’s UI to the respective module.
-struct MyTabViewer;
+/// This custom tab viewer delegates each tab's UI to the respective module.
+struct MyTabViewer {
+    error_popup: Option<String>,
+}
+
+impl MyTabViewer {
+    fn new() -> Self {
+        Self {
+            error_popup: None,
+        }
+    }
+    
+    fn show_error_popup(&mut self, ui: &mut Ui) {
+        if let Some(error_message) = &self.error_popup.clone() {
+            // Show a popup window with the error message
+            egui::Window::new("Error")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ui.ctx(), |ui| {
+                    ui.label(error_message);
+                    if ui.button("OK").clicked() {
+                        self.error_popup = None;
+                    }
+                });
+        }
+    }
+}
 
 impl TabViewer for MyTabViewer {
     type Tab = CustomTab;
@@ -65,19 +93,26 @@ impl TabViewer for MyTabViewer {
         match tab {
             CustomTab::ThunderstoreBrowser(_) => "Mod Browser".into(),
             CustomTab::LocalModList(_) => "Mods".into(),
+            CustomTab::Settings(_) => "Settings".into(),
         }
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
-        match tab {
+        self.show_error_popup(ui);
+        let result = match tab {
             CustomTab::ThunderstoreBrowser(list) => draw_thunderstore_browser(ui, list),
-            CustomTab::LocalModList(tab) => tab.ui(ui).expect("Should not have an expect here, change before release"),
+            CustomTab::LocalModList(tab) => tab.ui(ui),
+            CustomTab::Settings(config) => draw_settings_ui(ui, config),
+        };
+        if let Err(err) = result {
+            self.error_popup = Some(format!("Error: {}", err));
         }
     }
 }
 
 struct MyTabs {
     dock_state: DockState<CustomTab>,
+    tab_viewer: MyTabViewer,
 }
 
 impl MyTabs {
@@ -87,14 +122,27 @@ impl MyTabs {
         let tabs = vec![
             CustomTab::LocalModList(LocalModsTab::new(&thunderstore_mod_list, local_options)),
             CustomTab::ThunderstoreBrowser(thunderstore_mod_list.clone()),
+            CustomTab::Settings(Config::new())
         ];
         let dock_state = DockState::new(tabs);
-        Self { dock_state }
+        Self { 
+            dock_state,
+            tab_viewer: MyTabViewer::new(),
+        }
     }
 
     fn ui(&mut self, ui: &mut Ui) {
-        DockArea::new(&mut self.dock_state)
-            .style(Style::from_egui(ui.style().as_ref()))
-            .show_inside(ui, &mut MyTabViewer);
+        // make vertical layout to fit tabs and error messages
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            let available_height = ui.available_height();
+            // Leave some space for the label
+            let dock_height = available_height - 20.0;
+            ui.allocate_ui(eframe::egui::Vec2::new(ui.available_width(), dock_height), |ui| {
+                DockArea::new(&mut self.dock_state)
+                    .style(Style::from_egui(ui.style().as_ref()))
+                    .show_inside(ui, &mut self.tab_viewer);
+            });
+            ui.label("Test!");
+        });
     }
 }

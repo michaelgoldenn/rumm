@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::thunderstore::Mod;
 use crate::thunderstore::ModList;
+use crate::thunderstore::Version;
 use crate::user_info::Config;
 use crate::user_info::LocalModOptions;
 
@@ -68,7 +69,7 @@ impl ModCache {
             .iter()
             .find(|x| x.version_number == real_version)
             .ok_or_else(|| eyre!("cache_mod_by_mod_id: could not find version"))?
-            .clone(); //I LOVE CLONE(). I LOVE NOT DEALING WITH THE BORROW CHECKER WOOOOO
+            .clone(); //I LOVE CLONE(). I LOVE NOT THINKING ABOUT OWNERSHIP WOOOOO
         // Build the destination directory: <mod_cache_directory>/<mod id>/versions/<version id>
         let mod_id_folder = id;
         let version_id_folder = &thunderstore_version.version_number;
@@ -342,7 +343,11 @@ impl ModCache {
         Err(eyre!("mod_info.json not found in mod path: {:?}", path))
     }
     /// Removes any versions in the mod that are not present in the cache
-    pub fn update_versions_in_mod(&self, config: &Config, mod_to_update: &Mod) -> Result<Mod> {
+    pub fn prune_extra_versions_from_mod(
+        &self,
+        config: &Config,
+        mod_to_update: &Mod,
+    ) -> Result<Mod> {
         let version_path = self
             .get_mod_file_by_id(config, mod_to_update.uuid)?
             .join("versions");
@@ -425,7 +430,7 @@ impl ModCache {
             .iter()
             .find(|m| m.uuid == *uuid)
             .map_or(false, |m| {
-                self.update_versions_in_mod(&Config::new(), m)
+                self.prune_extra_versions_from_mod(&Config::new(), m)
                     .is_ok_and(|x| {
                         x.versions
                             .iter()
@@ -442,5 +447,54 @@ impl ModCache {
                 .iter()
                 .any(|v| &v.version_number == version),
         )
+    }
+
+    pub fn remove_version_from_cache(
+        &mut self,
+        config: &Config,
+        mod_to_update: &Mod,
+        version: Version,
+    ) -> Result<()> {
+        // Scary!
+        // but should only remove files of the form of a Uuid and so few files are like that that collateral system damage is unlikely
+        let path = config
+            .mod_cache_directory
+            .join(mod_to_update.uuid.to_string())
+            .join("versions")
+            .join(version.version_number);
+        fs::remove_dir_all(path)?;
+        self.update_self_from_cache();
+        Ok(())
+    }
+
+    /// Removes all installed versions from the cache except for the newest one
+    pub fn remove_old_versions_from_cache(
+        &mut self,
+        config: &Config,
+        mod_to_update: &Mod,
+    ) -> Result<()> {
+        // get newest versiom
+        let this_mod = self.prune_extra_versions_from_mod(
+            config,
+            self.cache_mod_list
+                .iter()
+                .find(|x| x.uuid == mod_to_update.uuid)
+                .ok_or(eyre!(
+                    "Could not find mod {} in the config",
+                    mod_to_update.full_name
+                ))?,
+        )?;
+        for version in &this_mod.versions {
+            if version
+                != this_mod
+                    .versions
+                    .first()
+                    .ok_or(eyre!("No versions found for mod {}", this_mod.full_name))?
+            // ignore the first version (hopefully they're organized by release time or this might suck to debug)
+            {
+                self.remove_version_from_cache(config, mod_to_update, version.clone());
+            }
+        }
+        Ok(())
     }
 }
