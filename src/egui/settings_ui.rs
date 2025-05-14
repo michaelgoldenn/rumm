@@ -8,6 +8,8 @@ use eframe::egui::Ui;
 
 use crate::user_info::Config;
 
+use super::TabResult;
+
 enum ChangeType {
     RumbleDirectory(PathBuf),
     ModCacheDirectory(PathBuf),
@@ -15,7 +17,7 @@ enum ChangeType {
     ShouldAutoUpdate(bool),
 }
 
-pub fn draw_settings_ui(ui: &mut Ui, config: &mut Config) -> Result<()> {
+pub fn draw_settings_ui(ui: &mut Ui, config: &mut Config) -> TabResult {
     let mut changes = vec![];
 
     ui.vertical(|ui| -> Result<()> {
@@ -61,7 +63,7 @@ pub fn draw_settings_ui(ui: &mut Ui, config: &mut Config) -> Result<()> {
     });
 
     apply_changes(config, changes);
-    Ok(())
+    todo!()
 }
 
 fn check_for_rumble_exe(path: &Path) -> Result<bool> {

@@ -14,8 +14,11 @@ use crate::thunderstore::Mod;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
+    /// Will be something like /path/to/common/RUMBLE/
     pub rumble_directory: PathBuf,
+    /// Will be something like /rumm/config/mod_cache/
     pub mod_cache_directory: PathBuf,
+    /// Will be something like /rumm/config/enabled_mods.json
     pub config_file: PathBuf,
 }
 

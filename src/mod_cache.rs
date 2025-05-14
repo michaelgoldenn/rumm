@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::fs;
+use std::fs::read_dir;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -508,7 +509,8 @@ impl ModCache {
         Ok(())
     }
 
-    pub async fn update_mod(&mut self, config: &Config, mod_to_update: &mut Mod) -> Result<()> {
+    pub async fn update_mod(&mut self, config: &Config, mod_to_update: &Mod) -> Result<()> {
+        println!("updating mod!");
         let mut local_options = LocalModOptions::new(config);
         let mod_version_lock = local_options
             .get_mod_options(mod_to_update.uuid.to_string())
@@ -533,9 +535,12 @@ impl ModCache {
             .clone();
         // update the mod
         let new_mod = self
-            .cache_mod_by_mod_id(&mod_to_update.uuid.to_string(), Some(&latest_version.version_number))
+            .cache_mod_by_mod_id(
+                &mod_to_update.uuid.to_string(),
+                Some(&latest_version.version_number),
+            )
             .await?;
-        local_options.set_mod_version(&new_mod.uuid, &latest_version.name, config);
+        local_options.set_mod_version(&new_mod.uuid, &latest_version.version_number, config);
         Ok(())
     }
 
@@ -544,6 +549,70 @@ impl ModCache {
             println!("updating mod: {}", mod_to_update.name);
             self.update_mod(config, &mut mod_to_update).await?;
         }
+        Ok(())
+    }
+
+    pub async fn push_mod_to_rumble(&self, mod_from_cache: &Mod, config: &Config) -> Result<()> {
+        let rumble_mod_directory = &config.rumble_directory.join("mods");
+        let rumble_user_data_directory = &config.rumble_directory.join("UserData");
+        let local_mod_options = LocalModOptions::new(&config);
+        // get selected version
+        let mod_options = local_mod_options
+            .get_mod_options(mod_from_cache.uuid.to_string())
+            .ok_or(eyre!("Mod {} could not be found!", mod_from_cache.name))?;
+        let version = mod_options.version.clone();
+        let mod_files_cache_path = config
+            .mod_cache_directory
+            .join(mod_from_cache.uuid.to_string())
+            .join("versions")
+            .join(version);
+        // copy mods over
+        let mod_cache_mod_dir = mod_files_cache_path.join("Mods");
+        if mod_cache_mod_dir.exists() {
+            // mod folder exists, copy any contents to the rumble mod directory
+            ModCache::push_directory_contents_to_other_directory(
+                &mod_cache_mod_dir,
+                rumble_mod_directory,
+                true,
+            );
+        }
+        // copy user data over
+        let mod_cache_user_data_dir = mod_files_cache_path.join("UserData");
+        if mod_cache_user_data_dir.exists() {
+            // user data folder exists, copy any contents to the rumble userdata directory
+            ModCache::push_directory_contents_to_other_directory(
+                &mod_cache_user_data_dir,
+                rumble_mod_directory,
+                false,
+            );
+        }
+        todo!()
+    }
+
+    fn push_directory_contents_to_other_directory(
+        source_dir: &Path,
+        receiving_dir: &Path,
+        should_overwrite: bool,
+    ) -> Result<()> {
+        // make glob for all files in source directory
+        let pattern = source_dir
+            .join("*")
+            .to_str()
+            .expect("Failed to convert path to string")
+            .to_string();
+        for entry in glob::glob(&pattern).expect("Failed to read glob pattern") {
+            let source_path = entry?;
+            if !source_path.is_file() {
+                continue;
+            }
+            let file_name = source_path.file_name().expect("Failed to get filename");
+            let destination_path = receiving_dir.join(file_name);
+            // Check if file exists at destination and respect should_overwrite
+            if !destination_path.exists() || should_overwrite {
+                fs::copy(&source_path, &destination_path)?;
+            }
+        }
+
         Ok(())
     }
 }

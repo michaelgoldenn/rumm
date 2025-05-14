@@ -6,19 +6,15 @@ edition = "2024"
 [dependencies]
 async-recursion = "1.1.1"
 color-eyre = "0.6.3"
-dirs = "6.0.0"
 eframe = { version = "0.31.1" }
 egui_dock = "0.16.0"
 egui_extras = { version = "0.31.1", features = ["all_loaders"] }
-egui_material_icons = "0.3.0"
-image = { version = "0.25.6", features = ["jpeg", "png"] }
+glob = "0.3.2"
 reqwest = { version = "0.12.15", features = ["json"] }
 rust_search = "2.1.0"
 self_update = "0.42.0"
-semver = "1.0.26"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-serde_with = "3.12.0"
 tokio = { version = "1.44.1", features = ["full"] }
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
 zip = "2.6.1"

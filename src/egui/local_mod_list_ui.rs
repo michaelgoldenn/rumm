@@ -9,6 +9,8 @@ use eframe::egui::{self, Button, Checkbox, Image, Label, Ui};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
+use super::{AppCommand, TabResult};
+
 /// All data for the “Mods” tab lives here.
 pub struct LocalModsTab {
     cache: ModCache,
@@ -24,7 +26,7 @@ enum ChangeType {
     Version(String),
     RemoveVersion(Version),
     VersionLock(bool),
-    /// Only updates the mods that aren't version locked
+    Update,
     UpdateAll,
     DeleteMod,
 }
@@ -41,7 +43,7 @@ impl LocalModsTab {
 
     /// Draws one frame of the tab. Remains synchronous, heavy work is off‑loaded
     /// to a dedicated blocking thread so the UI never stalls.
-    pub fn ui(&mut self, ui: &mut Ui) -> Result<()> {
+    pub fn ui(&mut self, ui: &mut Ui) -> TabResult {
         // check whether the background thread has finished
         if let Some(rx) = &self.result_rx {
             while let Ok(r) = rx.try_recv() {
@@ -59,6 +61,10 @@ impl LocalModsTab {
         let config = Config::new();
 
         egui::ScrollArea::vertical().show(ui, |ui| -> Result<()> {
+            if ui.button("Update All").clicked() {
+                let first = self.cache.cache_mod_list.first().ok_or(eyre!("No mods found to update!"))?;
+                self.pending_changes.push((first.clone(), ChangeType::UpdateAll));
+            }
             let grid_result = egui::Grid::new("Mod Grid").striped(true).show(ui, |ui| {
                 for original_mod_from_thunderstore in &self.cache.cache_mod_list {
                     let mod_from_cache = match self
@@ -97,15 +103,15 @@ impl LocalModsTab {
                         ui.add_enabled(is_mod_enabled, Label::new(&first.name));
                         //ui.label(&first.name);
                         //version lock checkbox
-                        let mut auto_update = !current.version_lock.clone();
+                        let mut version_lock = current.version_lock.clone();
                         let checkbox = ui.add_enabled(
                             is_mod_enabled,
-                            Checkbox::new(&mut auto_update, "auto-update"),
-                        );
+                            Checkbox::new(&mut version_lock, "Lock Verison"),
+                        ).on_hover_text("If checked, the mod will not update unless you use the version selector to the right");
                         if checkbox.changed() {
                             self.pending_changes.push((
                                 mod_from_cache.clone(),
-                                ChangeType::VersionLock(!auto_update),
+                                ChangeType::VersionLock(version_lock),
                             ));
                         };
                     }
@@ -162,6 +168,9 @@ impl LocalModsTab {
                             ChangeType::Version(selected_version),
                         ));
                     }
+                    if ui.button("Update").clicked() {
+                        self.pending_changes.push((mod_from_cache.clone(), ChangeType::Update));
+                    }
                     // Delete Button
                     if ui
                         .add(Button::image(egui::include_image!("./icons/trash.svg")))
@@ -200,12 +209,13 @@ impl LocalModsTab {
                 }
             });
         }
-        self.update_state()?;
-        Ok(())
+        self.update_state()
+        //todo!()
     }
-    fn update_state(&mut self) -> Result<()> {
+    fn update_state(&mut self) -> Result<Option<AppCommand>> {
         let config = Config::new();
         let mut mod_options = LocalModOptions::new(&config);
+        // I now realize there can only be one change per frame (user can't click two buttons on the same frame!) so this is redundant
         for change in &self.pending_changes {
             let (mod_to_update, change_type) = change;
             println!("Updating State!");
@@ -220,21 +230,32 @@ impl LocalModsTab {
                     mod_options.set_mod_version(&mod_to_update.uuid, &version.to_string(), &config)
                 }?,
                 ChangeType::RemoveVersion(version) => {
-                    self.cache
-                        .remove_version_from_cache(&config, mod_to_update, version.clone());
+                    self.cache.remove_version_from_cache(
+                        &config,
+                        mod_to_update,
+                        version.clone(),
+                    )?;
                 }
                 ChangeType::DeleteMod => {
                     self.cache.remove_mod_from_cache(&config, mod_to_update)?;
+                    //return Ok(Some(AppCommand))
+                }
+                ChangeType::Update => {
+                    //self.cache.update_mod(&config, mod_to_update);
+                    let update = mod_to_update.clone();
+                    self.pending_changes.clear();
+                    return Ok(Some(AppCommand::UpdateMod(update)))
                 }
                 ChangeType::UpdateAll => {
-                    todo!()
+                    self.pending_changes.clear();
+                    return Ok(Some(AppCommand::UpdateAllMods));
                 }
             }
         }
         self.pending_changes.clear();
         // update state
         self.options = mod_options;
-        Ok(())
+        Ok(None)
     }
 }
 
