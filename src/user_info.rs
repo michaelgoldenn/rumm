@@ -182,11 +182,11 @@ impl LocalModOptions {
     pub fn set_mod_version(
         &mut self,
         mod_id: &Uuid,
-        version: String,
+        version: &String,
         config: &Config,
     ) -> Result<()> {
         if let Some(mod_option) = self.get_mod_options_mut(mod_id.to_string()) {
-            mod_option.version = version;
+            mod_option.version = version.to_string();
             self.save_to_file(&config)?;
         }
         Ok(())

@@ -45,9 +45,9 @@ impl ModCache {
     pub async fn cache_mod_by_mod_id(
         &mut self,
         id: &String,
-        version: Option<&String>,
+        version_name: Option<&String>,
     ) -> Result<Mod> {
-        let real_version = self.resolve_mod_version(id, version)?;
+        let real_version = self.resolve_mod_version(id, version_name)?;
         let config = Config::new();
         let _mod_options = LocalModOptions::new(&config);
         let download_path = &config.mod_cache_directory;
@@ -95,15 +95,12 @@ impl ModCache {
         //println!("Extracting mod files...");
         self.extract_zip_file(&destination_file, &destination_dir)
             .await?;
-        // Optionally remove the zip file after extraction
         tokio::fs::remove_file(&destination_file).await?;
-        // add the config.json to the file as well
         ModCache::add_mod_config_json(&this_mod, &config)?;
 
         // update config with the new version
         let mut local_mod_option = LocalModOptions::new(&config);
         local_mod_option.enable_mod(&this_mod, &config)?;
-        println!("Hello! Just saying hi");
         self.cache_mod_dependancies(&this_mod, real_version).await?;
 
         self.update_self_from_cache()?;
@@ -167,7 +164,7 @@ impl ModCache {
         })
         .await??; // Unwrap the JoinHandle and then the Result
 
-        println!("Extraction completed successfully");
+        //println!("Extraction completed successfully");
         Ok(())
     }
 
@@ -448,7 +445,7 @@ impl ModCache {
                 .any(|v| &v.version_number == version),
         )
     }
-
+    /// Removes the version listed from the cache.
     pub fn remove_version_from_cache(
         &mut self,
         config: &Config,
@@ -464,6 +461,19 @@ impl ModCache {
             .join(version.version_number);
         fs::remove_dir_all(path)?;
         self.update_self_from_cache();
+        Ok(())
+    }
+    /// Removes the mod from the cache
+    /// # SCARY! use with caution
+    pub fn remove_mod_from_cache(&mut self, config: &Config, mod_to_remove: &Mod) -> Result<()> {
+        let file = self.get_mod_file_by_id(config, mod_to_remove.uuid)?;
+        // just another sanity check - make sure we're a decscendant of the cahce directory
+        if file.ancestors().any(|x| x == config.mod_cache_directory) {
+            // Scary!
+            // should be fine though since it must be in the cache directory
+            //   (let's just hope nobody changes their cache directory to `/`)
+            fs::remove_dir_all(&file)?;
+        };
         Ok(())
     }
 
@@ -494,6 +504,45 @@ impl ModCache {
             {
                 self.remove_version_from_cache(config, mod_to_update, version.clone());
             }
+        }
+        Ok(())
+    }
+
+    pub async fn update_mod(&mut self, config: &Config, mod_to_update: &mut Mod) -> Result<()> {
+        let mut local_options = LocalModOptions::new(config);
+        let mod_version_lock = local_options
+            .get_mod_options(mod_to_update.uuid.to_string())
+            .ok_or(eyre!(
+                "Could not find options for mod: {}",
+                mod_to_update.name
+            ))?
+            .version_lock;
+        if mod_version_lock == true {
+            // mod's version is locked, return
+            return Ok(());
+        }
+        let latest_version = self
+            .thunderstore_mod_list
+            .mods
+            .iter()
+            .find(|x| x.uuid == mod_to_update.uuid)
+            .ok_or(eyre!("Could not find mod in Thunderstore Mod List"))?
+            .versions
+            .first() // hopefully versions.first() gets the latest version
+            .ok_or(eyre!("No versions found in mod {}", &mod_to_update.name))?
+            .clone();
+        // update the mod
+        let new_mod = self
+            .cache_mod_by_mod_id(&mod_to_update.uuid.to_string(), Some(&latest_version.version_number))
+            .await?;
+        local_options.set_mod_version(&new_mod.uuid, &latest_version.name, config);
+        Ok(())
+    }
+
+    pub async fn update_all_mods(&mut self, config: &Config) -> Result<()> {
+        for mut mod_to_update in self.cache_mod_list.clone() {
+            println!("updating mod: {}", mod_to_update.name);
+            self.update_mod(config, &mut mod_to_update).await?;
         }
         Ok(())
     }

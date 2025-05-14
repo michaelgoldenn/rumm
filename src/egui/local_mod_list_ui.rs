@@ -24,6 +24,9 @@ enum ChangeType {
     Version(String),
     RemoveVersion(Version),
     VersionLock(bool),
+    /// Only updates the mods that aren't version locked
+    UpdateAll,
+    DeleteMod,
 }
 
 impl LocalModsTab {
@@ -137,6 +140,7 @@ impl LocalModsTab {
                                                 .add(Button::image(egui::include_image!(
                                                     "./icons/trash.svg"
                                                 )))
+                                                .on_hover_text("Delete version")
                                                 .clicked()
                                             {
                                                 //self.cache.remove_old_versions_from_cache(&config, &mod_from_cache);
@@ -158,6 +162,15 @@ impl LocalModsTab {
                             ChangeType::Version(selected_version),
                         ));
                     }
+                    // Delete Button
+                    if ui
+                        .add(Button::image(egui::include_image!("./icons/trash.svg")))
+                        .on_hover_text("Delete mod")
+                        .clicked()
+                    {
+                        self.pending_changes
+                            .push((mod_from_cache.clone(), ChangeType::DeleteMod));
+                    };
                     ui.end_row();
                 }
                 Ok(())
@@ -194,21 +207,27 @@ impl LocalModsTab {
         let config = Config::new();
         let mut mod_options = LocalModOptions::new(&config);
         for change in &self.pending_changes {
-            let (mod_stuff, change_type) = change;
+            let (mod_to_update, change_type) = change;
             println!("Updating State!");
             match change_type {
                 ChangeType::Enabled(enabled) => {
-                    { mod_options.set_mod_enabled(&mod_stuff, &config, *enabled) }?
+                    { mod_options.set_mod_enabled(&mod_to_update, &config, *enabled) }?
                 }
                 ChangeType::VersionLock(enabled) => {
-                    { mod_options.set_version_lock(&mod_stuff.uuid, *enabled, &config) }?
+                    { mod_options.set_version_lock(&mod_to_update.uuid, *enabled, &config) }?
                 }
                 ChangeType::Version(version) => {
-                    { mod_options.set_mod_version(&mod_stuff.uuid, version.to_string(), &config) }?
-                }
+                    mod_options.set_mod_version(&mod_to_update.uuid, &version.to_string(), &config)
+                }?,
                 ChangeType::RemoveVersion(version) => {
                     self.cache
-                        .remove_version_from_cache(&config, mod_stuff, version.clone());
+                        .remove_version_from_cache(&config, mod_to_update, version.clone());
+                }
+                ChangeType::DeleteMod => {
+                    self.cache.remove_mod_from_cache(&config, mod_to_update)?;
+                }
+                ChangeType::UpdateAll => {
+                    todo!()
                 }
             }
         }

@@ -8,6 +8,8 @@ A mod manager for the VR game [Rumble](https://store.steampowered.com/app/890550
 This project lets you download and manage all of your mods from Thunderstore, with an emphasis on working in the background. After adding mods to the list, the manager can automatically update them to the lastest version without needing to launch them at all.
 
 ## Required before release
+- Syncing mods between us and Rumble
+- an "update all" button
 
 
 ### Features
