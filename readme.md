@@ -1,4 +1,5 @@
-## NOTE: This project is not fully stable. Please report crashes in an Issue or through discord
+> [!WARNING] 
+> This project is not fully stable. Make sure to backup your mods and *especially* your UserData. Please report bugs in a github issue or through discord
 ---
 # RUMM
 ## Rumble's ~~Ultimate~~ Unstable Mod Manager
@@ -6,11 +7,6 @@
 A mod manager for the VR game [Rumble](https://store.steampowered.com/app/890550/RUMBLE/).
 
 This project lets you download and manage all of your mods from Thunderstore, with an emphasis on working in the background. After adding mods to the list, the manager can automatically update them to the lastest version without needing to launch them at all.
-
-## Required before release
-- Syncing mods between us and Rumble
-- ~~an "update all" button~~
-
 
 ### Features
 - Browsing / Downloading from Thunderstore
