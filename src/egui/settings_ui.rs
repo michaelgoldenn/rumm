@@ -56,14 +56,16 @@ pub fn draw_settings_ui(ui: &mut Ui, config: &mut Config) -> TabResult {
             let mut cache_directory = original_cache_directory.clone();
             ui.text_edit_singleline(&mut cache_directory);
             if cache_directory != original_cache_directory {
-                changes.push(ChangeType::ModCacheDirectory(cache_directory.clone().into()));
+                changes.push(ChangeType::ModCacheDirectory(
+                    cache_directory.clone().into(),
+                ));
             };
         }
         Ok(())
     });
 
     apply_changes(config, changes);
-    todo!()
+    Ok(None)
 }
 
 fn check_for_rumble_exe(path: &Path) -> Result<bool> {
@@ -78,9 +80,7 @@ fn apply_changes(config: &mut Config, changes: Vec<ChangeType>) {
             ChangeType::RumbleDirectory(file) => config.rumble_directory = file,
             ChangeType::ModCacheDirectory(file) => config.mod_cache_directory = file,
             ChangeType::ConfigFile(file) => config.config_file = file,
-            ChangeType::ShouldAutoUpdate(x) => {
-                todo!()
-            }
+            ChangeType::ShouldAutoUpdate(x) => config.should_auto_update = x,
         }
     }
     config.save_to_file();

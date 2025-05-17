@@ -1,9 +1,6 @@
 // src/gui/ThunderstoreBrowser.rs
 
-use crate::mod_cache::ModCache;
 use crate::thunderstore::ModList;
-use crate::user_info::Config;
-use color_eyre::eyre::Result;
 use eframe::egui::{self, Ui};
 
 use super::{AppCommand, TabResult};

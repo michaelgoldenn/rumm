@@ -5,7 +5,7 @@ use eframe::egui;
 use eframe::egui::{Ui, WidgetText};
 use egui_dock::{DockArea, DockState, Style, TabViewer};
 use settings_ui::draw_settings_ui;
-use tokio::runtime::{Handle, Runtime};
+use tokio::runtime::Handle;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -25,6 +25,7 @@ pub enum AppCommand {
     UpdateMod(Mod),
     UpdateAllMods,
     CacheModByID(Uuid, Option<String>),
+    SyncModsToRumble,
 }
 
 pub fn start_gui(mod_list: ModList) -> eframe::Result {
@@ -63,21 +64,27 @@ impl MyApp {
             handle.spawn(async move {
                 while let Some(cmd) = cmd_rx.recv().await {
                     let mut cache = cache.write().await;
+                    let config = &Config::new();
                     match cmd {
                         AppCommand::UpdateMod(mod_to_update) => {
                             println!("updating mod!");
-                            if let Err(e) = cache.update_mod(&Config::new(), &mod_to_update).await {
+                            if let Err(e) = cache.update_mod(config, &mod_to_update).await {
                                 eprintln!("update_all_mods: {e}");
                             }
                         } 
-                        AppCommand::UpdateAllMods => {
-                            if let Err(e) = cache.update_all_mods(&Config::new()).await {
-                                eprintln!("update_all_mods: {e}");
-                            }
-                        }
                         AppCommand::CacheModByID( id, version ) => {
                             if let Err(e) = cache.cache_mod_by_mod_id(&id.to_string(), version.as_ref()).await {
                                 eprintln!("cache_mod_by_mod_id: {e}");
+                            }
+                        }
+                        AppCommand::UpdateAllMods => {
+                            if let Err(e) = cache.update_all_mods(config).await {
+                                eprintln!("update_all_mods: {e}");
+                            }
+                        }
+                        AppCommand::SyncModsToRumble => {
+                            if let Err(e) = cache.push_all_mods_to_rumble(config).await {
+                                eprintln!("sync_mods_to_rumble: {e}");
                             }
                         }
                     }

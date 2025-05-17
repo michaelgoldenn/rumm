@@ -5,6 +5,7 @@ use crate::user_info::LocalModOptions;
 use crate::{mod_cache::ModCache, user_info::Config};
 use color_eyre::eyre::{Result, eyre};
 use eframe::egui::{self, Button, Checkbox, Image, Label, Ui};
+use uuid::Uuid;
 
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -18,17 +19,36 @@ pub struct LocalModsTab {
     /// Receiver for results coming back from the worker thread.
     result_rx: Option<Receiver<Result<()>>>,
     // trying to emulate Elm with this one, might wanna switch to iced instead of egui at some point
-    pending_changes: Vec<(Mod, ChangeType)>,
+    pending_changes: Vec<PendingChange>,
 }
 
-enum ChangeType {
-    Enabled(bool),
-    Version(String),
-    RemoveVersion(Version),
-    VersionLock(bool),
-    Update,
+enum PendingChange {
+    // changes one mod
+    Enable {
+        mod_to_change: Mod,
+        on: bool,
+    },
+    VersionLock {
+        mod_to_change: Mod,
+        lock: bool,
+    },
+    SetVersion {
+        mod_to_change: Mod,
+        version: Version,
+    },
+    RemoveVersion {
+        mod_to_change: Mod,
+        version: Version,
+    },
+    DeleteMod {
+        mod_to_change: Mod,
+    },
+    UpdateMod {
+        mod_to_change: Mod,
+    },
+    // global changes
     UpdateAll,
-    DeleteMod,
+    SyncToRumble,
 }
 
 impl LocalModsTab {
@@ -61,10 +81,16 @@ impl LocalModsTab {
         let config = Config::new();
 
         egui::ScrollArea::vertical().show(ui, |ui| -> Result<()> {
-            if ui.button("Update All").clicked() {
-                let first = self.cache.cache_mod_list.first().ok_or(eyre!("No mods found to update!"))?;
-                self.pending_changes.push((first.clone(), ChangeType::UpdateAll));
-            }
+            // two top buttons
+            ui.horizontal(|ui| -> Result<()> {
+                if ui.button("Update All").clicked() {
+                    self.pending_changes.push(PendingChange::UpdateAll);
+                }
+                if ui.button("Sync To Rumble").clicked() {
+                    self.pending_changes.push(PendingChange::SyncToRumble);
+                }
+                Ok(())
+            }).inner?;
             let grid_result = egui::Grid::new("Mod Grid").striped(true).show(ui, |ui| {
                 for original_mod_from_thunderstore in &self.cache.cache_mod_list {
                     let mod_from_cache = match self
@@ -93,7 +119,7 @@ impl LocalModsTab {
                     // just a hacky way to convert from the `mut bool` to the `enable/disable mod` functions
                     if mod_enabled_mut != is_mod_enabled {
                         self.pending_changes
-                            .push((mod_from_cache.clone(), ChangeType::Enabled(mod_enabled_mut)));
+                            .push(PendingChange::Enable { mod_to_change: mod_from_cache.clone(), on: mod_enabled_mut });
                     }
 
                     if let Some(first) = original_mod_from_thunderstore.versions.first() {
@@ -109,10 +135,8 @@ impl LocalModsTab {
                             Checkbox::new(&mut version_lock, "Lock Verison"),
                         ).on_hover_text("If checked, the mod will not update unless you use the version selector to the right");
                         if checkbox.changed() {
-                            self.pending_changes.push((
-                                mod_from_cache.clone(),
-                                ChangeType::VersionLock(version_lock),
-                            ));
+                            self.pending_changes.push(
+                                PendingChange::VersionLock { mod_to_change: mod_from_cache.clone(), lock: version_lock });
                         };
                     }
                     // version selector
@@ -150,10 +174,9 @@ impl LocalModsTab {
                                                 .clicked()
                                             {
                                                 //self.cache.remove_old_versions_from_cache(&config, &mod_from_cache);
-                                                self.pending_changes.push((
-                                                    mod_from_cache.clone(),
-                                                    ChangeType::RemoveVersion(v.clone()),
-                                                ));
+                                                self.pending_changes.push(
+                                                    PendingChange::RemoveVersion { mod_to_change: mod_from_cache.clone(), version: v.clone() },
+                                                );
                                             };
                                         }
                                     });
@@ -163,13 +186,13 @@ impl LocalModsTab {
                     );
                     if old_version != selected_version {
                         pending_updates.push((mod_from_cache.clone(), selected_version.clone()));
-                        self.pending_changes.push((
-                            mod_from_cache.clone(),
-                            ChangeType::Version(selected_version),
-                        ));
+                        let version = mod_from_cache.versions.iter().find(|x| x.version_number == selected_version).ok_or(eyre!("Mod version {selected_version} not found in mod {}", mod_from_cache.name))?;
+                        self.pending_changes.push(
+                            PendingChange::SetVersion { mod_to_change: mod_from_cache.clone(), version: version.clone() },
+                        );
                     }
                     if ui.button("Update").clicked() {
-                        self.pending_changes.push((mod_from_cache.clone(), ChangeType::Update));
+                        self.pending_changes.push(PendingChange::UpdateAll);
                     }
                     // Delete Button
                     if ui
@@ -178,7 +201,7 @@ impl LocalModsTab {
                         .clicked()
                     {
                         self.pending_changes
-                            .push((mod_from_cache.clone(), ChangeType::DeleteMod));
+                            .push(PendingChange::DeleteMod { mod_to_change: mod_from_cache.clone() });
                     };
                     ui.end_row();
                 }
@@ -217,38 +240,43 @@ impl LocalModsTab {
         let mut mod_options = LocalModOptions::new(&config);
         // I now realize there can only be one change per frame (user can't click two buttons on the same frame!) so this is redundant
         for change in &self.pending_changes {
-            let (mod_to_update, change_type) = change;
-            println!("Updating State!");
-            match change_type {
-                ChangeType::Enabled(enabled) => {
-                    { mod_options.set_mod_enabled(&mod_to_update, &config, *enabled) }?
+            match change {
+                PendingChange::Enable { mod_to_change, on } => {
+                    self.options.set_mod_enabled(&mod_to_change, &config, *on)?;
                 }
-                ChangeType::VersionLock(enabled) => {
-                    { mod_options.set_version_lock(&mod_to_update.uuid, *enabled, &config) }?
+                PendingChange::VersionLock {
+                    mod_to_change,
+                    lock,
+                } => {
+                    mod_options.set_version_lock(&mod_to_change.uuid, *lock, &config)?;
                 }
-                ChangeType::Version(version) => {
-                    mod_options.set_mod_version(&mod_to_update.uuid, &version.to_string(), &config)
+                PendingChange::SetVersion { mod_to_change, version } => {
+                    mod_options.set_mod_version(&mod_to_change.uuid, &version.version_number.to_string(), &config)
                 }?,
-                ChangeType::RemoveVersion(version) => {
+                PendingChange::RemoveVersion { mod_to_change, version }=> {
                     self.cache.remove_version_from_cache(
                         &config,
-                        mod_to_update,
+                        mod_to_change,
                         version.clone(),
                     )?;
                 }
-                ChangeType::DeleteMod => {
-                    self.cache.remove_mod_from_cache(&config, mod_to_update)?;
+                PendingChange::DeleteMod { mod_to_change } => {
+                    self.cache.remove_mod_from_cache(&config, mod_to_change)?;
                     //return Ok(Some(AppCommand))
                 }
-                ChangeType::Update => {
+                PendingChange::UpdateMod { mod_to_change } => {
                     //self.cache.update_mod(&config, mod_to_update);
-                    let update = mod_to_update.clone();
+                    let update = mod_to_change.clone();
                     self.pending_changes.clear();
-                    return Ok(Some(AppCommand::UpdateMod(update)))
+                    return Ok(Some(AppCommand::UpdateMod(update)));
                 }
-                ChangeType::UpdateAll => {
+                PendingChange::UpdateAll => {
                     self.pending_changes.clear();
                     return Ok(Some(AppCommand::UpdateAllMods));
+                }
+                PendingChange::SyncToRumble => {
+                    self.pending_changes.clear();
+                    return Ok(Some(AppCommand::SyncModsToRumble));
                 }
             }
         }

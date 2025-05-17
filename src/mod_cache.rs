@@ -540,7 +540,7 @@ impl ModCache {
                 Some(&latest_version.version_number),
             )
             .await?;
-        local_options.set_mod_version(&new_mod.uuid, &latest_version.version_number, config);
+        local_options.set_mod_version(&new_mod.uuid, &latest_version.version_number, config)?;
         Ok(())
     }
 
@@ -548,6 +548,16 @@ impl ModCache {
         for mut mod_to_update in self.cache_mod_list.clone() {
             println!("updating mod: {}", mod_to_update.name);
             self.update_mod(config, &mut mod_to_update).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn push_all_mods_to_rumble(&self, config: &Config) -> Result<()> {
+        let mod_options = LocalModOptions::new(config);
+        for mod_to_push in self.cache_mod_list.clone() {
+            if mod_options.is_mod_enabled(&mod_to_push)? {
+                self.push_mod_to_rumble(&mod_to_push, config).await?;
+            }
         }
         Ok(())
     }
@@ -574,7 +584,7 @@ impl ModCache {
                 &mod_cache_mod_dir,
                 rumble_mod_directory,
                 true,
-            );
+            )?;
         }
         // copy user data over
         let mod_cache_user_data_dir = mod_files_cache_path.join("UserData");
@@ -582,11 +592,11 @@ impl ModCache {
             // user data folder exists, copy any contents to the rumble userdata directory
             ModCache::push_directory_contents_to_other_directory(
                 &mod_cache_user_data_dir,
-                rumble_mod_directory,
+                rumble_user_data_directory,
                 false,
-            );
+            )?;
         }
-        todo!()
+        Ok(())
     }
 
     fn push_directory_contents_to_other_directory(
@@ -594,25 +604,27 @@ impl ModCache {
         receiving_dir: &Path,
         should_overwrite: bool,
     ) -> Result<()> {
-        // make glob for all files in source directory
-        let pattern = source_dir
-            .join("*")
-            .to_str()
-            .expect("Failed to convert path to string")
-            .to_string();
-        for entry in glob::glob(&pattern).expect("Failed to read glob pattern") {
-            let source_path = entry?;
+        // make sure containing folder exists
+        if !receiving_dir.exists() {
+            fs::create_dir_all(receiving_dir)?;
+        }
+        // copy over each item in the directory
+        for entry in fs::read_dir(source_dir)? {
+            let source_path = entry?.path();
             if !source_path.is_file() {
                 continue;
             }
-            let file_name = source_path.file_name().expect("Failed to get filename");
-            let destination_path = receiving_dir.join(file_name);
-            // Check if file exists at destination and respect should_overwrite
-            if !destination_path.exists() || should_overwrite {
-                fs::copy(&source_path, &destination_path)?;
+    
+            let dest_path = receiving_dir.join(
+                source_path
+                    .file_name()
+                    .ok_or(eyre!("missing filename"))?,
+            );
+    
+            if !dest_path.exists() || should_overwrite {
+                fs::copy(&source_path, &dest_path)?;
             }
         }
-
         Ok(())
     }
 }

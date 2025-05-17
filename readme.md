@@ -9,7 +9,7 @@ This project lets you download and manage all of your mods from Thunderstore, wi
 
 ## Required before release
 - Syncing mods between us and Rumble
-- an "update all" button
+- ~~an "update all" button~~
 
 
 ### Features

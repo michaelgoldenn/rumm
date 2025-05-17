@@ -20,6 +20,7 @@ pub struct Config {
     pub mod_cache_directory: PathBuf,
     /// Will be something like /rumm/config/enabled_mods.json
     pub config_file: PathBuf,
+    pub should_auto_update: bool,
 }
 
 impl Config {
@@ -34,6 +35,7 @@ impl Config {
             rumble_directory: Path::new("").to_path_buf(),
             mod_cache_directory: base_dir.join("mod_cache"),
             config_file: base_dir.join("enabled_mods.json"),
+            should_auto_update: true,
         };
         config.load_from_file(); // ignoring errors, if there is an error it should just use the defaults
         config
