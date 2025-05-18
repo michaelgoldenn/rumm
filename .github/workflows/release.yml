@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches: [stable]
-    tags:    ['v*']
+    #tags:    ['v*']
   workflow_dispatch: {}
 
 permissions:
@@ -13,14 +13,19 @@ permissions:
 jobs:
   # build the program on windows and linux
   build:
-    uses: ./build.yml # just calls build.yml to reduce repitition
-  
+    uses: ./.github/workflows/build.yml # just calls build.yml to reduce repitition
+
   # creates a draft release to be edited
   release:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+    # Checkout the repo so the cliff script works
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     # fetch built binaries
     - name: Download artifacts
       uses: actions/download-artifact@v4
@@ -28,19 +33,21 @@ jobs:
         pattern: rumm-*
         merge-multiple: true
         path: dist
-    - uses: actions/checkout@v4
+    # generate changelog
+    - name: Generate a changelog
+      uses: orhun/git-cliff-action@v4
+      id: git-cliff
       with:
-        fetch-depth: 0
-    # generates changelog
-    - name: Generate changelog
-      uses: orhun/git-cliff-action@v3
-      with:
-        config: .github/cliff.toml
-        args: --latest --output CHANGELOG.md
+        config: ./.github/workflows/cliff.toml
+        args: --verbose
+      env:
+        OUTPUT: CHANGELOG.md
     # make the actual release
+    - name: Print changelog
+      run: cat "${{ steps.git-cliff.outputs.changelog }}"
     - name: Draft GitHub release
       uses: softprops/action-gh-release@v2
       with:
         draft: true
-        body_path: CHANGELOG.md
+        body: ${{ steps.read-changelog.outputs.changelog }}
         files: dist/**
