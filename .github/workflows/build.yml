@@ -1,6 +1,7 @@
 name: Build (Linux & Windows)
 
 on:
+  workflow_call: # needs this to get called by `release.yml`
   push:
     branches: [ main ]
   pull_request: { }
