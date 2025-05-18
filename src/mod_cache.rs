@@ -465,7 +465,6 @@ impl ModCache {
         Ok(())
     }
     /// Removes the mod from the cache
-    /// # SCARY! use with caution
     pub fn remove_mod_from_cache(&mut self, config: &Config, mod_to_remove: &Mod) -> Result<()> {
         let file = self.get_mod_file_by_id(config, mod_to_remove.uuid)?;
         // just another sanity check - make sure we're a decscendant of the cahce directory
@@ -552,17 +551,16 @@ impl ModCache {
         Ok(())
     }
 
-    pub async fn push_all_mods_to_rumble(&self, config: &Config) -> Result<()> {
+    pub async fn sync_all_mods_to_rumble(&self, config: &Config) -> Result<()> {
         let mod_options = LocalModOptions::new(config);
         for mod_to_push in self.cache_mod_list.clone() {
-            if mod_options.is_mod_enabled(&mod_to_push)? {
-                self.push_mod_to_rumble(&mod_to_push, config).await?;
-            }
+            self.sync_mod_to_rumble(&mod_to_push, config).await?;
         }
         Ok(())
     }
-
-    pub async fn push_mod_to_rumble(&self, mod_from_cache: &Mod, config: &Config) -> Result<()> {
+    /// ## Warning
+    /// This will check the local mod options and will not push if the mod is disabled.
+    pub async fn sync_mod_to_rumble(&self, mod_from_cache: &Mod, config: &Config) -> Result<()> {
         let rumble_mod_directory = &config.rumble_directory.join("mods");
         let rumble_user_data_directory = &config.rumble_directory.join("UserData");
         let local_mod_options = LocalModOptions::new(&config);
@@ -576,8 +574,22 @@ impl ModCache {
             .join(mod_from_cache.uuid.to_string())
             .join("versions")
             .join(version);
-        // copy mods over
         let mod_cache_mod_dir = mod_files_cache_path.join("Mods");
+
+        // if mod is disabled, delete it from the rumble directory and end early
+        if !mod_options.enabled {
+            for entry in fs::read_dir(mod_cache_mod_dir.clone())? {
+                let file_name = entry?
+                    .file_name()
+                    .to_str()
+                    .ok_or(eyre!("Could not get file name from directory entry",))?
+                    .to_string();
+                ModCache::remove_file_from_directory(file_name, &rumble_mod_directory)?;
+            }
+            return Ok(());
+        }
+
+        // copy mods dir over
         if mod_cache_mod_dir.exists() {
             // mod folder exists, copy any contents to the rumble mod directory
             ModCache::push_directory_contents_to_other_directory(
@@ -614,17 +626,25 @@ impl ModCache {
             if !source_path.is_file() {
                 continue;
             }
-    
-            let dest_path = receiving_dir.join(
-                source_path
-                    .file_name()
-                    .ok_or(eyre!("missing filename"))?,
-            );
-    
+
+            let dest_path =
+                receiving_dir.join(source_path.file_name().ok_or(eyre!("missing filename"))?);
+
             if !dest_path.exists() || should_overwrite {
                 fs::copy(&source_path, &dest_path)?;
             }
         }
         Ok(())
+    }
+
+    /// scary! also incredibly basic, should just switch any instances of this function to just `fs::remove_file()`
+    fn remove_file_from_directory(file_name: String, directory: &Path) -> Result<Option<()>> {
+        println!("removing {file_name} from {}", directory.to_str().ok_or(eyre!("couldn't convert path to string!"))?);
+        let file_path = directory.join(file_name);
+        if !file_path.exists() || !file_path.is_file() {
+            return Ok(None);
+        }
+        std::fs::remove_file(file_path)?;
+        Ok(Some(()))
     }
 }

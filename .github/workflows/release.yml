@@ -2,57 +2,45 @@ name: Release
 
 on:
   push:
-    branches: [ stable ]
-    tags:    [ 'v*' ]
-  workflow_dispatch: #manual “Run workflow” button
+    branches: [stable]
+    tags:    ['v*']
+  workflow_dispatch: {}
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
-  # builds the executables. Is just a copy of build.yml, should figure outa way to reduce repitition
+  # build the program on windows and linux
   build:
-    strategy:
-      matrix:
-        os:   [ubuntu-latest, windows-latest]
-        rust: [stable]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          components: rustfmt, clippy
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key:  ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-      - run: cargo build --release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rumm-${{ runner.os }}
-          path: target/release/rumm${{ runner.os == 'Windows' && '.exe' || '' }}
-
-  # builds a github release for the project
+    uses: ./.github/workflows/build.yml # just calls build.yml to reduce repitition
+  
+  # creates a draft release to be edited
   release:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
-      # get the artifacts from the 
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: rumm-*
-          path: artifacts
-      # makes a draft github release to be edited before release
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          generate_release_notes: true
-          files: |
-            artifacts/**                      # grabs all uploaded binaries
+    # fetch built binaries
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: rumm-*
+        merge-multiple: true
+        path: dist
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    # generates changelog
+    - name: Generate changelog
+      uses: orhun/git-cliff-action@v3
+      with:
+        config: .github/cliff.toml
+        args: --latest --output CHANGELOG.md
+    # make the actual release
+    - name: Draft GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        draft: true
+        body_path: CHANGELOG.md
+        files: dist/**

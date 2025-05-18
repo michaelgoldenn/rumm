@@ -57,7 +57,7 @@ impl MyApp {
         let runtime = start_runtime();
         let (runtime_commands, mut cmd_rx) = mpsc::unbounded_channel::<AppCommand>();
         let cache = Arc::new(RwLock::new(ModCache::new(&mods)));
-        // worker
+        // make the worker that runs async functions in a background thread
         {
             let cache = cache.clone();
             let handle = runtime.handle();
@@ -83,7 +83,7 @@ impl MyApp {
                             }
                         }
                         AppCommand::SyncModsToRumble => {
-                            if let Err(e) = cache.push_all_mods_to_rumble(config).await {
+                            if let Err(e) = cache.sync_all_mods_to_rumble(config).await {
                                 eprintln!("sync_mods_to_rumble: {e}");
                             }
                         }
@@ -102,8 +102,7 @@ impl MyApp {
     }    
 }
 
-/// Spawns a multi-thread runtime and gives you a `Handle` you can clone.
-/// Dropping `RuntimeGuard` will shut it down gracefully.
+/// Spawns a multi-thread runtime for processing async tasks in the background
 pub fn start_runtime() -> RuntimeGuard {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -248,7 +247,7 @@ impl MyTabs {
                         .show_inside(ui, &mut self.tab_viewer);
                 },
             );
-            ui.label("Test!");
+            //ui.label("Test!");
         });
     }
 }

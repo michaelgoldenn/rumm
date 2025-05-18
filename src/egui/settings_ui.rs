@@ -22,7 +22,7 @@ pub fn draw_settings_ui(ui: &mut Ui, config: &mut Config) -> TabResult {
 
     ui.vertical(|ui| -> Result<()> {
         // Rumble Directory
-        {
+        ui.horizontal(|ui| -> Result<()> {
             ui.label("Rumble Directory: ");
             let original_rumble_directory = config
                 .rumble_directory
@@ -43,9 +43,10 @@ pub fn draw_settings_ui(ui: &mut Ui, config: &mut Config) -> TabResult {
                 Ok(true) => "Rumble executable found!".into(),
             };
             ui.label(result_text);
-        }
+            Ok(())
+        });
         // Mod Cahce Directory
-        {
+        ui.horizontal(|ui| -> Result<()> {
             ui.label("Mod Cache Directory: ");
             let original_cache_directory = config
                 .mod_cache_directory
@@ -60,11 +61,12 @@ pub fn draw_settings_ui(ui: &mut Ui, config: &mut Config) -> TabResult {
                     cache_directory.clone().into(),
                 ));
             };
-        }
+            Ok(())
+        });
         Ok(())
     });
 
-    apply_changes(config, changes);
+    apply_changes(config, changes)?;
     Ok(None)
 }
 
@@ -74,7 +76,7 @@ fn check_for_rumble_exe(path: &Path) -> Result<bool> {
         .any(|x| x.is_ok_and(|x| x.file_name() == "RUMBLE.exe")));
 }
 
-fn apply_changes(config: &mut Config, changes: Vec<ChangeType>) {
+fn apply_changes(config: &mut Config, changes: Vec<ChangeType>) -> Result<()> {
     for change in changes {
         match change {
             ChangeType::RumbleDirectory(file) => config.rumble_directory = file,
@@ -83,5 +85,5 @@ fn apply_changes(config: &mut Config, changes: Vec<ChangeType>) {
             ChangeType::ShouldAutoUpdate(x) => config.should_auto_update = x,
         }
     }
-    config.save_to_file();
+    config.save_to_file()
 }

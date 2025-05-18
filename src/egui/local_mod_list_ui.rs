@@ -21,7 +21,9 @@ pub struct LocalModsTab {
     // trying to emulate Elm with this one, might wanna switch to iced instead of egui at some point
     pending_changes: Vec<PendingChange>,
 }
-
+// There are essentially two types of changes: async ones and non-async ones
+// The `TabResult` is for async changes and should be returned from `ui`
+// This struct is for changes that don't need to be async and can run this frame
 enum PendingChange {
     // changes one mod
     Enable {
@@ -154,6 +156,7 @@ impl LocalModsTab {
                         |ui| {
                             combo_box.show_ui(ui, |ui| {
                                 for v in &original_mod_from_thunderstore.versions {
+                                    // the ui for each element in the combo box
                                     ui.horizontal(|ui| {
                                         ui.selectable_value(
                                             &mut selected_version,
@@ -207,13 +210,11 @@ impl LocalModsTab {
                 }
                 Ok(())
             });
-
             // Handle any errors from the grid
             if let Err(e) = grid_result.inner {
                 return Err(e);
             }
-
-            Ok(()) // Add this to return Ok(()) from the ScrollArea closure
+            Ok(())
         });
 
         // start the worker if we have a job for it
@@ -233,12 +234,12 @@ impl LocalModsTab {
             });
         }
         self.update_state()
-        //todo!()
     }
+
     fn update_state(&mut self) -> Result<Option<AppCommand>> {
         let config = Config::new();
         let mut mod_options = LocalModOptions::new(&config);
-        // I now realize there can only be one change per frame (user can't click two buttons on the same frame!) so this is redundant
+        // I now realize there can only be one change per frame (user can't click two buttons on the same frame) so this is redundant
         for change in &self.pending_changes {
             match change {
                 PendingChange::Enable { mod_to_change, on } => {
@@ -250,10 +251,20 @@ impl LocalModsTab {
                 } => {
                     mod_options.set_version_lock(&mod_to_change.uuid, *lock, &config)?;
                 }
-                PendingChange::SetVersion { mod_to_change, version } => {
-                    mod_options.set_mod_version(&mod_to_change.uuid, &version.version_number.to_string(), &config)
+                PendingChange::SetVersion {
+                    mod_to_change,
+                    version,
+                } => {
+                    mod_options.set_mod_version(
+                        &mod_to_change.uuid,
+                        &version.version_number.to_string(),
+                        &config,
+                    )
                 }?,
-                PendingChange::RemoveVersion { mod_to_change, version }=> {
+                PendingChange::RemoveVersion {
+                    mod_to_change,
+                    version,
+                } => {
                     self.cache.remove_version_from_cache(
                         &config,
                         mod_to_change,

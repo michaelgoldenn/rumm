@@ -27,11 +27,12 @@ This project lets you download and manage all of your mods from Thunderstore, wi
 - Automatically installing MelonLoader
 
 ## Installation
+Before installation, make sure [MelonLoader](https://melonloader.co/) is installed to let Rumble mods work.
 
 ### Pre-compiled binaries
-1. Go to the project’s [Releases] page.
-2. Download the archive that matches your OS and CPU architecture.
-3. Unpack it and move the **`rumm`** binary somewhere in your `$PATH` (e.g., `/usr/local/bin`).
+1. Go to the project’s [Releases](https://github.com/michaelgoldenn/rumm/releases) page.
+2. Download the file that matches your OS.
+3. Unpack the zip and run the executable (you can add it to your PATH if you want to find it easier in the future)
 
 ### Build from source
 Make sure you have a modern Rust toolchain installed (install via [rustup](https://rustup.rs/))
@@ -46,4 +47,4 @@ cargo build --release
 then you should find the executable in target/release
 
 #### Nix
-If you use Nix flakes, after `git cloning` as before, use `nix develop` to enter the dev shell, or `nix build` to build the program
+If you use Nix flakes, after `git cloning` as before, use `nix develop` to enter the dev shell, then `cargo build` should work

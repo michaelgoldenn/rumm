@@ -64,7 +64,7 @@ pub struct ModOptions {
     pub id: String,
     pub version: String,
     pub version_lock: bool,
-    enabled: bool,
+    pub enabled: bool,
 }
 impl PartialEq for ModOptions {
     fn eq(&self, other: &Self) -> bool {
