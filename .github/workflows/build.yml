@@ -1,0 +1,43 @@
+name: Build (Linux & Windows)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request: { }
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+        rust: [ stable ]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      # install rust
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt, clippy
+      # reuse build artifacts between runs
+      - name: Cache cargo registry and build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key:  ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Build
+        run: cargo build --release
+
+      # 5. Upload the binary created by this OS
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rumm-${{ runner.os }}
+          path: |
+            target/release/rumm${{ runner.os == 'Windows' && '.exe' || '' }}

@@ -1,77 +1,120 @@
 {
-  description = "A Nix-flake-based Rust development environment";
+  description = "rumm development shell";
 
   inputs = {
-    nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1.*.tar.gz";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, rust-overlay }:
+  outputs =
+    { nixpkgs, rust-overlay, ... }:
     let
-      secret_path = "/run/secrets/github/rumm";
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ rust-overlay.overlays.default self.overlays.default ];
-        };
-      });
-    in
-    {
-      overlays.default = final: prev: {
-        rustToolchain =
-          let
-            rust = prev.rust-bin;
-          in
-          if builtins.pathExists ./rust-toolchain.toml then
-            rust.fromRustupToolchainFile ./rust-toolchain.toml
-          else if builtins.pathExists ./rust-toolchain then
-            rust.fromRustupToolchainFile ./rust-toolchain
-          else
-            rust.stable.latest.default.override {
-              extensions = [ "rust-src" "rustfmt" ];
-            };
+      system = "x86_64-linux";
+
+      lib = nixpkgs.lib;
+      overlays = [ (import rust-overlay) ];
+      pkgs = import nixpkgs {
+        inherit system overlays;
       };
 
-      devShells = forEachSupportedSystem ({ pkgs }: {
-        default = pkgs.mkShell {
-          packages = with pkgs; [
-            rustToolchain
-            openssl
-            pkg-config
-            cargo-deny
-            cargo-edit
-            cargo-watch
-            rust-analyzer
-            bacon
-            openssl
-            cargo
-            rustc
-          ];
+      rustToolchain = (pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml).override {
+        extensions = [
+          "rust-src"
+          "rust-analyzer"
+        ];
+      };
+      rustPlatform = pkgs.makeRustPlatform {
+        cargo = rustToolchain;
+        rustc = rustToolchain;
+      };
 
-          env = {
-            # Required by rust-analyzer
-            RUST_SRC_PATH = "${pkgs.rustToolchain}/lib/rustlib/src/rust/library";
-            RUST_LOG = "debug";
-            LD_LIBRARY_PATH = with pkgs; lib.makeLibraryPath [
-              libGL
-              libxkbcommon
-              wayland
-            ];
-          };
+      mingwPkgs = pkgs.pkgsCross.mingwW64;
+      mingwCompiler = mingwPkgs.buildPackages.gcc;
+      mingwRustflags = "-L ${mingwPkgs.windows.pthreads}/lib";
+      mingwTool = name: "${mingwCompiler}/bin/${mingwCompiler.targetPrefix}${name}";
 
-          shellHook = ''
-            alias ls=eza
-            alias find=fd
-            git config --local credential.helper '!f() { 
-              echo "username=PersonalAccessToken"; 
-              echo "password=$(cat ${secret_path})"; 
-            }; f'
-          '';
+      libs = with pkgs; [
+        gtk3
+        libGL
+        openssl
+        atk
+        libxkbcommon
+        wayland
+      ];
+
+      buildTools = with pkgs; [
+        rustToolchain
+        pkg-config
+        mingwCompiler
+        makeWrapper
+      ];
+
+      libraryPath = lib.makeLibraryPath libs;
+
+      manifest = lib.importTOML ./Cargo.toml;
+      packageName = manifest.package.name;
+      packageVersion = manifest.workspace.package.version;
+
+      package = rustPlatform.buildRustPackage {
+        nativeBuildInputs = buildTools;
+        buildInputs = libs;
+
+        pname = packageName;
+        version = packageVersion;
+        src = lib.cleanSource ./.;
+
+        verbose = true;
+
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+          allowBuiltinFetchGit = true;
         };
-      });
+
+        doCheck = false;
+
+        preConfigure = ''
+          export LD_LIBRARY_PATH="${libraryPath}"
+          export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS="${mingwRustflags}";
+        '';
+
+        postInstall = ''
+          wrapProgram $out/bin/${packageName} \
+            --prefix LD_LIBRARY_PATH : "${libraryPath}" \
+            --prefix XDG_DATA_DIRS : "${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}"
+        '';
+
+        meta = with lib; {
+          description = "Rumble mod integration";
+          license = licenses.mit;
+          homepage = "https://github.com/michaelgoldenn/rumm";
+          mainProgram = packageName;
+        };
+      };
+
+      devShell = pkgs.mkShell {
+        name = "rumm";
+
+        buildInputs = buildTools ++ libs;
+        packages = with pkgs; [
+        bacon
+        ];
+
+        LD_LIBRARY_PATH = libraryPath;
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS = mingwRustflags;
+
+        # Necessary for cross compiled build scripts, otherwise it will build as ELF format
+        # https://docs.rs/cc/latest/cc/#external-configuration-via-environment-variables
+        CC_x86_64_pc_windows_gnu = mingwTool "cc";
+        AR_x86_64_pc_windows_gnu = mingwTool "ar";
+      };
+    in
+    {
+      packages.${system} = {
+        ${packageName} = package;
+        default = package;
+      };
+
+      devShells.${system}.default = devShell;
     };
 }

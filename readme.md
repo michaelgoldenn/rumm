@@ -17,7 +17,7 @@ This project lets you download and manage all of your mods from Thunderstore, wi
 ### Planned Features
 - Self-updating for future releases
 - Auto-detecting the Rumble path
-- Auto-updating mods
+- Auto-updating mods in the background (no need to start up the manager!)
 - Support for installing mods locally (not from Thunderstore)
 - Detecting manually installed Thunderstore mods
 
@@ -25,3 +25,25 @@ This project lets you download and manage all of your mods from Thunderstore, wi
 - Profiles for different sets of mods
 - UI customization
 - Automatically installing MelonLoader
+
+## Installation
+
+### Pre-compiled binaries
+1. Go to the project’s [Releases] page.
+2. Download the archive that matches your OS and CPU architecture.
+3. Unpack it and move the **`rumm`** binary somewhere in your `$PATH` (e.g., `/usr/local/bin`).
+
+### Build from source
+Make sure you have a modern Rust toolchain installed (install via [rustup](https://rustup.rs/))
+```bash
+# Clone the repo
+git clone https://github.com/michaelgoldenn/rumm.git
+cd rumm
+
+# Compile an optimized build
+cargo build --release
+```
+then you should find the executable in target/release
+
+#### Nix
+If you use Nix flakes, after `git cloning` as before, use `nix develop` to enter the dev shell, or `nix build` to build the program
