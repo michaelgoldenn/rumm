@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     branches: [stable]
-    tags:    ['v*']
+    #tags:    ['v*']
   workflow_dispatch: {}
 
 permissions:
@@ -45,5 +45,5 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         draft: true
-        body: ${{ steps.cliff.outputs.content }}
+        body: "${{ steps.cliff.outputs.changelog }}"
         files: dist/**
