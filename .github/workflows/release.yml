@@ -14,13 +14,18 @@ jobs:
   # build the program on windows and linux
   build:
     uses: ./.github/workflows/build.yml # just calls build.yml to reduce repitition
-  
+
   # creates a draft release to be edited
   release:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+    # Checkout the repository so that cliff.toml is available
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     # fetch built binaries
     - name: Download artifacts
       uses: actions/download-artifact@v4
@@ -28,11 +33,9 @@ jobs:
         pattern: rumm-*
         merge-multiple: true
         path: dist
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    # generates changelog
+    # generate changelog
     - name: Generate changelog
+      id: cliff
       uses: orhun/git-cliff-action@v3
       with:
         config: .github/cliff.toml
