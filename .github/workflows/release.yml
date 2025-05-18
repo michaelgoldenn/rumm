@@ -38,12 +38,12 @@ jobs:
       id: cliff
       uses: orhun/git-cliff-action@v3
       with:
-        config: .github/cliff.toml
-        args: --latest --output CHANGELOG.md
+        config: cliff.toml
+        args: --current
     # make the actual release
     - name: Draft GitHub release
       uses: softprops/action-gh-release@v2
       with:
         draft: true
-        body_path: CHANGELOG.md
+        body: ${{ steps.cliff.outputs.content }}
         files: dist/**
