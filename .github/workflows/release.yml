@@ -13,7 +13,7 @@ permissions:
 jobs:
   # build the program on windows and linux
   build:
-    uses: ./.github/workflows/build.yml # just calls build.yml to reduce repitition
+    uses: ./build.yml # just calls build.yml to reduce repitition
   
   # creates a draft release to be edited
   release:
