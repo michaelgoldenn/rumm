@@ -21,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Checkout the repository so that cliff.toml is available
-    - name: Checkout repository
+    # Checkout the repo so the cliff script works
+    - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
@@ -34,20 +34,17 @@ jobs:
         merge-multiple: true
         path: dist
     # generate changelog
-    - name: Generate changelog
-      id: cliff
-      uses: orhun/git-cliff-action@v3
+    - name: Generate a changelog
+      uses: orhun/git-cliff-action@v4
+      id: git-cliff
       with:
-        config: .github/workflows/cliff.toml
-        args: --verbose --current --output CHANGELOG.md
-    - name: Read changelog
-      id: read-changelog
-      run: |
-        CHANGELOG=$(cat CHANGELOG.md)
-        echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        echo "$CHANGELOG" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        config: ./cliff.toml
+        args: --verbose
+      env:
+        OUTPUT: CHANGELOG.md
     # make the actual release
+    - name: Print changelog
+      run: cat "${{ steps.git-cliff.outputs.changelog }}"
     - name: Draft GitHub release
       uses: softprops/action-gh-release@v2
       with:
