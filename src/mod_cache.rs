@@ -461,7 +461,7 @@ impl ModCache {
             .join("versions")
             .join(version.version_number);
         fs::remove_dir_all(path)?;
-        self.update_self_from_cache();
+        self.update_self_from_cache()?;
         Ok(())
     }
     /// Removes the mod from the cache
@@ -502,7 +502,7 @@ impl ModCache {
                     .ok_or(eyre!("No versions found for mod {}", this_mod.full_name))?
             // ignore the first version (hopefully they're organized by release time or this might suck to debug)
             {
-                self.remove_version_from_cache(config, mod_to_update, version.clone());
+                self.remove_version_from_cache(config, mod_to_update, version.clone())?;
             }
         }
         Ok(())
@@ -552,14 +552,12 @@ impl ModCache {
     }
 
     pub async fn sync_all_mods_to_rumble(&self, config: &Config) -> Result<()> {
-        let mod_options = LocalModOptions::new(config);
         for mod_to_push in self.cache_mod_list.clone() {
             self.sync_mod_to_rumble(&mod_to_push, config).await?;
         }
         Ok(())
     }
-    /// ## Warning
-    /// This will check the local mod options and will not push if the mod is disabled.
+    /// This will check the mod options and will not push if the mod is disabled.
     pub async fn sync_mod_to_rumble(&self, mod_from_cache: &Mod, config: &Config) -> Result<()> {
         let rumble_mod_directory = &config.rumble_directory.join("mods");
         let rumble_user_data_directory = &config.rumble_directory.join("UserData");
@@ -575,6 +573,11 @@ impl ModCache {
             .join("versions")
             .join(version);
         let mod_cache_mod_dir = mod_files_cache_path.join("Mods");
+
+        // If it's not in the rumble path, return an error
+        if !matches!(Self::check_for_rumble_exe(rumble_mod_directory.parent().unwrap_or(Path::new(""))), Ok(true)) {
+            return Err(eyre!("Rumble could not be found! Check the settings to make sure your rumble path is correct"));
+        }
 
         // if mod is disabled, delete it from the rumble directory and end early
         if !mod_options.enabled {
@@ -639,12 +642,23 @@ impl ModCache {
 
     /// scary! also incredibly basic, should just switch any instances of this function to just `fs::remove_file()`
     fn remove_file_from_directory(file_name: String, directory: &Path) -> Result<Option<()>> {
-        println!("removing {file_name} from {}", directory.to_str().ok_or(eyre!("couldn't convert path to string!"))?);
+        println!(
+            "removing {file_name} from {}",
+            directory
+                .to_str()
+                .ok_or(eyre!("couldn't convert path to string!"))?
+        );
         let file_path = directory.join(file_name);
         if !file_path.exists() || !file_path.is_file() {
             return Ok(None);
         }
         std::fs::remove_file(file_path)?;
         Ok(Some(()))
+    }
+
+    fn check_for_rumble_exe(path: &Path) -> Result<bool> {
+        return Ok(path
+            .read_dir()?
+            .any(|x| x.is_ok_and(|x| x.file_name() == "RUMBLE.exe")));
     }
 }
