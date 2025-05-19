@@ -1,12 +1,12 @@
 > [!WARNING] 
-> This project is not fully stable. Make sure to backup your mods and *especially* your UserData. Please report bugs in a github issue or through discord
+> This project is not fully stable. Make sure to backup your mods and *especially* your UserData. Please report bugs in a github issue or through discord, and PRs are welcome.
 ---
 # RUMM
 ## Rumble's ~~Ultimate~~ Unstable Mod Manager
 
 A mod manager for the VR game [Rumble](https://store.steampowered.com/app/890550/RUMBLE/).
 
-This project lets you download and manage all of your mods from Thunderstore, with an emphasis on working in the background. After adding mods to the list, the manager can automatically update them to the lastest version without needing to launch them at all.
+This project lets you download and manage all of your mods from Thunderstore. After downloading them from the list, make sure to sync the list with rumble
 
 ### Features
 - Browsing / Downloading from Thunderstore
@@ -27,7 +27,7 @@ This project lets you download and manage all of your mods from Thunderstore, wi
 - Automatically installing MelonLoader
 
 ## Installation
-Before installation, make sure [MelonLoader](https://melonloader.co/) is installed to let Rumble mods work.
+Before installation, make sure [MelonLoader](https://melonloader.co/) is installed in Rumble so that mods will work.
 
 ### Pre-compiled binaries
 1. Go to the project’s [Releases](https://github.com/michaelgoldenn/rumm/releases) page.
