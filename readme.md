@@ -31,7 +31,7 @@ Before installation, make sure [MelonLoader](https://melonloader.co/) is install
 
 ### Pre-compiled binaries
 1. Go to the project’s [Releases](https://github.com/michaelgoldenn/rumm/releases) page.
-2. Download the file that matches your OS.
+2. Download the file that matches your OS (`rumm.exe` for windows, `rumm` for linux)
 3. Unpack the zip and run the executable (you can add it to your PATH if you want to find it easier in the future)
 
 ### Build from source
