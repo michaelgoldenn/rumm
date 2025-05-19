@@ -39,7 +39,7 @@ jobs:
       id: git-cliff
       with:
         config: ./.github/workflows/cliff.toml
-        args: --no-footer
+        args: --verbose
       env:
         OUTPUT: CHANGELOG.md
     # make the actual release
