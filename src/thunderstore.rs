@@ -1,5 +1,7 @@
 
-use color_eyre::eyre::Result;
+use std::path::PathBuf;
+
+use color_eyre::eyre::{Ok, Result};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -39,7 +41,7 @@ pub struct Version {
     pub version_number: String,
     pub website_url: String,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ModList {
     pub mods: Vec<Mod>,
 }
@@ -83,17 +85,13 @@ mod tests {
 }
 
 impl ModList {
-    pub async fn new() -> Result<Self> {
-        let request_url = format!("https://thunderstore.io/c/rumble/api/v1/package/");
-        let response_text = reqwest::get(&request_url).await?.text().await?;
-
-        // debug: print json to console
-        //println!("Raw JSON Response:\n{}",
-        //    serde_json::to_string_pretty(&serde_json::from_str::<serde_json::Value>(&response_text)?)?
-        //);
-
-        let response: Vec<Mod> = serde_json::from_str(&response_text)?;
-
-        return Ok(Self { mods: response });
+    /// If nothing is found at the path, just makes a new empty cache
+    pub fn new(path: PathBuf) -> Result<Self> {
+        // return the cached thunderstore response
+        let file = std::fs::read_to_string(path);
+        match file {
+            std::result::Result::Ok(x) => Ok(serde_json::from_str::<Self>(x.as_str())?),
+            Err(_) => {Ok(ModList { mods: vec![] })}
+        }
     }
 }

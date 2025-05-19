@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
 use color_eyre::eyre::Result;
 use eframe::egui;
@@ -6,8 +9,8 @@ use eframe::egui::{Ui, WidgetText};
 use egui_dock::{DockArea, DockState, Style, TabViewer};
 use settings_ui::draw_settings_ui;
 use tokio::runtime::Handle;
-use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::sync::RwLock;
+use tokio::sync::mpsc::{self, UnboundedSender};
 use uuid::Uuid;
 
 use crate::mod_cache::ModCache;
@@ -28,7 +31,7 @@ pub enum AppCommand {
     SyncModsToRumble,
 }
 
-pub fn start_gui(mod_list: ModList) -> eframe::Result {
+pub fn start_gui() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1280.0, 720.0]),
         ..Default::default()
@@ -39,7 +42,7 @@ pub fn start_gui(mod_list: ModList) -> eframe::Result {
         Box::new(move |cc| {
             // Install image loaders, etc.
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::new(MyApp::new(mod_list)))
+            Ok(Box::new(MyApp::new()))
         }),
     )
 }
@@ -50,17 +53,23 @@ struct MyApp {
     runtime: RuntimeGuard,
     handle: Handle,
     runtime_commands: UnboundedSender<AppCommand>,
+    runtime_errors: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl MyApp {
-    fn new(mods: ModList) -> Self {
+    fn new() -> Self {
         let runtime = start_runtime();
+        let mods = ModList::new(PathBuf::from_str("config/thunderstore-mods.json").unwrap()).expect("ModList was not able to be created, sorry it shouldn't crash but I was just writing this part quickly");
         let (runtime_commands, mut cmd_rx) = mpsc::unbounded_channel::<AppCommand>();
         let cache = Arc::new(RwLock::new(ModCache::new(&mods)));
+        let runtime_errors = Arc::new(Mutex::new(VecDeque::new()));
+
         // make the worker that runs async functions in a background thread
         {
             let cache = cache.clone();
             let handle = runtime.handle();
+            let errors = runtime_errors.clone();
+
             handle.spawn(async move {
                 while let Some(cmd) = cmd_rx.recv().await {
                     let mut cache = cache.write().await;
@@ -69,37 +78,49 @@ impl MyApp {
                         AppCommand::UpdateMod(mod_to_update) => {
                             println!("updating mod!");
                             if let Err(e) = cache.update_mod(config, &mod_to_update).await {
-                                eprintln!("update_all_mods: {e}");
+                                let error_msg = format!("Update mod error: {e}");
+                                println!("{}", &error_msg);
+                                errors.lock().unwrap().push_back(error_msg);
                             }
-                        } 
-                        AppCommand::CacheModByID( id, version ) => {
-                            if let Err(e) = cache.cache_mod_by_mod_id(&id.to_string(), version.as_ref()).await {
-                                eprintln!("cache_mod_by_mod_id: {e}");
+                        }
+                        AppCommand::CacheModByID(id, version) => {
+                            if let Err(e) = cache
+                                .cache_mod_by_mod_id(&id.to_string(), version.as_ref())
+                                .await
+                            {
+                                let error_msg = format!("Cache mod error: {e}");
+                                println!("{}", &error_msg);
+                                errors.lock().unwrap().push_back(error_msg);
                             }
                         }
                         AppCommand::UpdateAllMods => {
                             if let Err(e) = cache.update_all_mods(config).await {
-                                eprintln!("update_all_mods: {e}");
+                                let error_msg = format!("Update all mods error: {e}");
+                                println!("{}", &error_msg);
+                                errors.lock().unwrap().push_back(error_msg);
                             }
                         }
                         AppCommand::SyncModsToRumble => {
                             if let Err(e) = cache.sync_all_mods_to_rumble(config).await {
-                                eprintln!("sync_mods_to_rumble: {e}");
+                                let error_msg = format!("Sync mods error: {e}");
+                                println!("{}", &error_msg);
+                                errors.lock().unwrap().push_back(error_msg);
                             }
                         }
                     }
                 }
             });
         }
-    
+
         Self {
             cache,
-            tabs: MyTabs::new(mods, runtime_commands.clone()),
+            tabs: MyTabs::new(mods, runtime_commands.clone(), runtime_errors.clone()),
             handle: runtime.handle(),
             runtime,
             runtime_commands,
+            runtime_errors,
         }
-    }    
+    }
 }
 
 /// Spawns a multi-thread runtime for processing async tasks in the background
@@ -124,7 +145,10 @@ pub fn start_runtime() -> RuntimeGuard {
         }
     });
 
-    RuntimeGuard { rt: runtime, stop: Some(stop_tx) }
+    RuntimeGuard {
+        rt: runtime,
+        stop: Some(stop_tx),
+    }
 }
 
 pub struct RuntimeGuard {
@@ -132,10 +156,14 @@ pub struct RuntimeGuard {
     stop: Option<tokio::sync::oneshot::Sender<()>>,
 }
 impl RuntimeGuard {
-    pub fn handle(&self) -> tokio::runtime::Handle { self.rt.handle().clone() }
+    pub fn handle(&self) -> tokio::runtime::Handle {
+        self.rt.handle().clone()
+    }
 }
 impl Drop for RuntimeGuard {
-    fn drop(&mut self) { let _ = self.stop.take().map(|s| s.send(())); }
+    fn drop(&mut self) {
+        let _ = self.stop.take().map(|s| s.send(()));
+    }
 }
 
 impl eframe::App for MyApp {
@@ -149,7 +177,7 @@ impl eframe::App for MyApp {
 pub type TabResult = Result<Option<AppCommand>, color_eyre::eyre::Report>;
 
 pub enum CustomTab {
-    ThunderstoreBrowser(ModList),
+    ThunderstoreBrowser,
     LocalModList(LocalModsTab),
     Settings(Config),
 }
@@ -190,7 +218,7 @@ impl TabViewer for MyTabViewer {
 
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
         match tab {
-            CustomTab::ThunderstoreBrowser(_) => "Mod Browser".into(),
+            CustomTab::ThunderstoreBrowser => "Mod Browser".into(),
             CustomTab::LocalModList(_) => "Mods".into(),
             CustomTab::Settings(_) => "Settings".into(),
         }
@@ -199,7 +227,7 @@ impl TabViewer for MyTabViewer {
     fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
         self.show_error_popup(ui);
         let result = match tab {
-            CustomTab::ThunderstoreBrowser(list) => draw_thunderstore_browser(ui, list),
+            CustomTab::ThunderstoreBrowser => draw_thunderstore_browser(ui),
             CustomTab::LocalModList(tab) => tab.ui(ui),
             CustomTab::Settings(config) => draw_settings_ui(ui, config),
         };
@@ -208,28 +236,34 @@ impl TabViewer for MyTabViewer {
         }
         if let Ok(Some(cmd)) = result {
             let _ = self.runtime_commands.send(cmd);
-        }        
+        }
     }
 }
 
 struct MyTabs {
     dock_state: DockState<CustomTab>,
     tab_viewer: MyTabViewer,
+    runtime_errors: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl MyTabs {
-    pub fn new(thunderstore_mod_list: ModList, runtime_commands: mpsc::UnboundedSender<AppCommand>) -> Self {
+    pub fn new(
+        thunderstore_mod_list: ModList,
+        runtime_commands: mpsc::UnboundedSender<AppCommand>,
+        runtime_errors: Arc<Mutex<VecDeque<String>>>,
+    ) -> Self {
         // Create initial tabs using the mod list.
         let local_options = LocalModOptions::new(&Config::new());
         let tabs = vec![
             CustomTab::LocalModList(LocalModsTab::new(&thunderstore_mod_list, local_options)),
-            CustomTab::ThunderstoreBrowser(thunderstore_mod_list.clone()),
+            CustomTab::ThunderstoreBrowser,
             CustomTab::Settings(Config::new()),
         ];
         let dock_state = DockState::new(tabs);
         Self {
             dock_state,
             tab_viewer: MyTabViewer::new(runtime_commands),
+            runtime_errors,
         }
     }
 
@@ -247,7 +281,16 @@ impl MyTabs {
                         .show_inside(ui, &mut self.tab_viewer);
                 },
             );
-            //ui.label("Test!");
+            let mut error_queue = self.runtime_errors.lock().unwrap();
+            if !error_queue.is_empty() {
+                let error_message = error_queue.front().unwrap();
+                ui.label(egui::RichText::new(error_message).color(egui::Color32::RED));
+
+                // Optional: Add a button to clear the current error
+                if ui.button("Clear").clicked() {
+                    error_queue.pop_front();
+                }
+            }
         });
     }
 }
