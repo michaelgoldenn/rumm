@@ -38,12 +38,19 @@ jobs:
       id: cliff
       uses: orhun/git-cliff-action@v3
       with:
-        config: cliff.toml
-        args: --verbose --strip header
+        config: .github/workflows/cliff.toml
+        args: --verbose --current --output CHANGELOG.md
+    - name: Read changelog
+      id: read-changelog
+      run: |
+        CHANGELOG=$(cat CHANGELOG.md)
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
     # make the actual release
     - name: Draft GitHub release
       uses: softprops/action-gh-release@v2
       with:
         draft: true
-        body: ${{ steps.cliff.outputs.content }}
+        body: ${{ steps.read-changelog.outputs.changelog }}
         files: dist/**
