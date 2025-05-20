@@ -1,7 +1,7 @@
 // handles user-related things, such as configs and enabled mods
 
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -25,7 +25,7 @@ impl From<String> for SortType {
             "Alphabetical" => SortType::Alphabetically,
             "Last Released" => SortType::ReleaseDate,
             "Last Updated" => SortType::UpdateDate,
-            _ => panic!("Unsupported sorting type used!")
+            _ => panic!("Unsupported sorting type used!"),
         }
     }
 }
@@ -35,7 +35,7 @@ impl From<SortType> for String {
             SortType::Alphabetically => "Alphabetical".to_string(),
             SortType::ReleaseDate => "Last Released".to_string(),
             SortType::UpdateDate => "Last Updated".to_string(),
-        }   
+        }
     }
 }
 
@@ -60,7 +60,7 @@ impl Config {
         let base_dir = Path::new("config");
 
         let mut config = Self {
-            rumble_directory: Path::new("").to_path_buf(),
+            rumble_directory: Config::get_rumble_directory(),
             mod_cache_directory: base_dir.join("mod_cache"),
             config_file: base_dir.join("enabled_mods.json"),
             should_auto_update: true,
@@ -85,6 +85,86 @@ impl Config {
         let contents = fs::read_to_string(Self::CONFIG_PATH)?;
         *self = serde_json::from_str(&contents)?;
         Ok(())
+    }
+
+    // These functions were inspired by / adapted from xLoadingx's work
+    // https://github.com/xLoadingx/Rumble-Mod-Manager/blob/05d827240f4a5535c243954da86b731dceec1231/Rumble%20Mod%20Manager/LaunchPage.cs#L860
+    // with modifications to account for linux use
+    /// WARNING - Path generated is not guaranteed to be correct
+    fn get_rumble_directory() -> PathBuf {
+        #[cfg(target_os = "windows")] {
+            // Windows
+            let steam_path = Config::find_steam_path_windows()
+                .unwrap_or_else(|| PathBuf::from("Rumble path not found, replace this"));
+            let rumble_path = steam_path.join("steamapps").join("common").join("RUMBLE");
+            rumble_path
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            // Linux
+            let steam_path = Config::find_steam_path_linux()
+                .unwrap_or_else(|| PathBuf::from("Rumble path not found, replace this"));
+            let rumble_path = steam_path.join("steamapps").join("common").join("RUMBLE");
+            rumble_path
+        }
+    }
+    /// ## WARNING - AI Generated (I checked it though)
+    /// Finds the Steam installation path on Linux
+    #[cfg(not(target_os = "windows"))]
+    fn find_steam_path_linux() -> Option<PathBuf> {
+        // Check HOME environment variable for user-specific paths
+        if let Ok(home) = env::var("HOME") {
+            // Common user-specific Steam installation paths
+            let paths = [
+                format!("{}/.steam/steam", home),
+                format!("{}/.local/share/Steam", home),
+                format!("{}/.steam/debian-installation", home),
+                format!("{}/.steam/root", home),
+            ];
+            // Check each path for existence
+            for path in paths.iter() {
+                let path = Path::new(path);
+                if path.exists() && path.is_dir() {
+                    return Some(path.to_path_buf());
+                }
+            }
+        }
+        // Check system-wide installation path
+        let system_paths = ["/usr/lib/steam", "/usr/lib64/steam", "/usr/local/lib/steam"];
+        for path in system_paths.iter() {
+            let path = Path::new(path);
+            if path.exists() && path.is_dir() {
+                return Some(path.to_path_buf());
+            }
+        }
+        // Check the STEAM_ROOT environment variable if set
+        if let Ok(steam_root) = env::var("STEAM_ROOT") {
+            let path = Path::new(&steam_root);
+            if path.exists() && path.is_dir() {
+                return Some(path.to_path_buf());
+            }
+        }
+
+        None
+    }
+
+    #[cfg(target_os = "windows")]
+    /// Finds the Steam installation path on Windows
+    pub fn find_steam_path_windows() -> Option<PathBuf> {
+        // try to get the path from the registry
+        let result = (|| -> io::Result<PathBuf> {
+            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+            let steam_key = hkcu.open_subkey("SOFTWARE\\Valve\\Steam")?;
+            let install_path: String = steam_key.get_value("SteamPath")?;
+            Ok(PathBuf::from(install_path))
+        })();
+
+        if let Ok(path) = result {
+            if path.exists() && path.is_dir() {
+                return Some(path);
+            }
+        }
+        return None;
     }
 }
 /// The options for a mod - if it's enabled, what it's version is, etc.
