@@ -48,5 +48,5 @@ then you should find the executable in target/release
 If you use Nix flakes, after `git cloning` as before, use `nix develop` to enter the dev shell, then `cargo build` should work
 
 ## Screenshots
-![Screenshot From 2025-05-19 12-46-14](https://github.com/user-attachments/assets/cf31fdf7-8abb-40a9-b7ae-8d8e99058be1)
+![image](https://github.com/user-attachments/assets/426391c9-c62b-45a8-84da-d11c0f37b57b)
 ![image](https://github.com/user-attachments/assets/c2fb2534-c6c2-4df4-bdaa-8e9f5bdb1e5f)
