@@ -8,6 +8,8 @@ A mod manager for the VR game [Rumble](https://store.steampowered.com/app/890550
 
 This project lets you download and manage all of your mods from Thunderstore. After downloading them from the list, make sure to sync the list with rumble
 
+Download it [here](https://github.com/michaelgoldenn/rumm/releases)
+
 ### Features
 - Browsing / Downloading from Thunderstore
 - Enable / Disable mods
