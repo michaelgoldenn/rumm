@@ -39,6 +39,7 @@ pub fn draw_thunderstore_browser(ui: &mut Ui) -> TabResult {
         config.thunderstore_browser_sort = selected_sort_type;
         config.save_to_file()?;
     }
+    let mut out = Ok(None);
     let command = egui::Grid::new("Mod Grid")
         .striped(true)
         .show(ui, |ui| -> Option<AppCommand> {
@@ -65,7 +66,7 @@ pub fn draw_thunderstore_browser(ui: &mut Ui) -> TabResult {
                         .clone(),
                 );
                 if ui.add(egui::Button::new("Add Mod")).clicked() {
-                    return Some(AppCommand::CacheModByID(new_mod.uuid, None));
+                    out = Ok(Some(AppCommand::CacheModByID(new_mod.uuid, None)));
                 }
                 ui.end_row();
             }
@@ -75,5 +76,5 @@ pub fn draw_thunderstore_browser(ui: &mut Ui) -> TabResult {
     if let Some(cmd) = command {
         return Ok(Some(cmd));
     }
-    Ok(None)
+    out
 }
