@@ -15,6 +15,7 @@ This project lets you download and manage all of your mods from Thunderstore. Af
 - Support for Windows and Linux
 
 ### Planned Features
+- Better sorting for mod lists
 - Self-updating for future releases
 - Auto-detecting the Rumble path
 - Auto-updating mods in the background (no need to start up the manager!)
@@ -37,14 +38,15 @@ Before installation, make sure [MelonLoader](https://melonloader.co/) is install
 ### Build from source
 Make sure you have a modern Rust toolchain installed (install via [rustup](https://rustup.rs/))
 ```bash
-# Clone the repo
 git clone https://github.com/michaelgoldenn/rumm.git
 cd rumm
-
-# Compile an optimized build
-cargo build --release
+cargo build --release # Can omit --release if you want a faster build
 ```
 then you should find the executable in target/release
 
 #### Nix
 If you use Nix flakes, after `git cloning` as before, use `nix develop` to enter the dev shell, then `cargo build` should work
+
+## Screenshots
+![Screenshot From 2025-05-19 12-46-14](https://github.com/user-attachments/assets/cf31fdf7-8abb-40a9-b7ae-8d8e99058be1)
+![image](https://github.com/user-attachments/assets/c2fb2534-c6c2-4df4-bdaa-8e9f5bdb1e5f)
