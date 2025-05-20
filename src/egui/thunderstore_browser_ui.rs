@@ -43,6 +43,9 @@ pub fn draw_thunderstore_browser(ui: &mut Ui) -> TabResult {
         .striped(true)
         .show(ui, |ui| -> Option<AppCommand> {
             for new_mod in &sorted_mod_list.mods {
+                if new_mod.name == "GaleModManager" { // Ban Gale Mod Manager 
+                    continue;
+                }
                 // mod icon
                 ui.image(
                     new_mod
