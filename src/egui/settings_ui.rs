@@ -6,7 +6,7 @@ use std::{
 use color_eyre::eyre::{Result, eyre};
 use eframe::egui::Ui;
 
-use crate::user_info::Config;
+use crate::config_and_such::Config;
 
 use super::TabResult;
 

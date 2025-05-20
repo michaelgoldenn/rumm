@@ -14,8 +14,8 @@ use uuid::Uuid;
 use crate::thunderstore::Mod;
 use crate::thunderstore::ModList;
 use crate::thunderstore::Version;
-use crate::user_info::Config;
-use crate::user_info::LocalModOptions;
+use crate::config_and_such::Config;
+use crate::config_and_such::LocalModOptions;
 
 /// Stores local copies of mods, and handles putting mods into and out of the rumble directory.
 /// Each Entry is stored as `[Cache Directory]/[Mod ID]/{mod_info.json, versions/{latest, 1.0.0}}`

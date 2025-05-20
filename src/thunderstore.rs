@@ -1,10 +1,11 @@
-
 use std::path::PathBuf;
 
 use color_eyre::eyre::{Ok, Result};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::config_and_such::SortType;
 
 /// Just the straight mod data deserialized from Thunderstore's API request
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -91,7 +92,31 @@ impl ModList {
         let file = std::fs::read_to_string(path);
         match file {
             std::result::Result::Ok(x) => Ok(serde_json::from_str::<Self>(x.as_str())?),
-            Err(_) => {Ok(ModList { mods: vec![] })}
+            Err(_) => Ok(ModList { mods: vec![] }),
+        }
+    }
+
+    pub fn sort(&self, metric: &SortType) -> ModList {
+        let mut new_list = self.clone();
+        new_list.sort_self(metric);
+        new_list
+    }
+
+    pub fn sort_self(&mut self, metric: &SortType) {
+        match metric {
+            SortType::Alphabetically => {
+                self.mods.sort_by(|a, b| a.name.cmp(&b.name));
+            }
+            SortType::ReleaseDate => {
+                self.mods.sort_by(|a, b| {
+                    b.versions.last().unwrap().date_created.cmp(&a.versions.last().unwrap().date_created)
+                });
+            }
+            SortType::UpdateDate => {
+                self.mods.sort_by(|a, b| {
+                    b.versions.first().unwrap().date_created.cmp(&a.versions.first().unwrap().date_created)
+                });
+            }
         }
     }
 }

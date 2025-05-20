@@ -1,13 +1,13 @@
 use color_eyre::eyre::{Result, eyre};
 use mod_cache::ModCache;
 use std::{env, path::{Path, PathBuf}, str::FromStr, time::Duration};
-use user_info::Config;
+use config_and_such::Config;
 
 mod egui;
 mod mod_cache;
 mod thunderstore;
 mod updater;
-mod user_info;
+mod config_and_such;
 
 use egui::start_gui;
 use thunderstore::ModList;

@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::mod_cache::ModCache;
 use crate::thunderstore::{Mod, ModList};
-use crate::user_info::{Config, LocalModOptions};
+use crate::config_and_such::{Config, LocalModOptions};
 
 mod local_mod_list_ui;
 mod settings_ui;
