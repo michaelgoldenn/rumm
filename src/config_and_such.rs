@@ -12,6 +12,33 @@ use uuid::Uuid;
 
 use crate::thunderstore::Mod;
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SortType {
+    Alphabetically,
+    ReleaseDate,
+    UpdateDate,
+}
+impl From<String> for SortType {
+    fn from(value: String) -> Self {
+        let str_value = value.as_str();
+        match str_value {
+            "Alphabetical" => SortType::Alphabetically,
+            "Last Released" => SortType::ReleaseDate,
+            "Last Updated" => SortType::UpdateDate,
+            _ => panic!("Unsupported sorting type used!")
+        }
+    }
+}
+impl From<SortType> for String {
+    fn from(value: SortType) -> Self {
+        match value {
+            SortType::Alphabetically => "Alphabetical".to_string(),
+            SortType::ReleaseDate => "Last Released".to_string(),
+            SortType::UpdateDate => "Last Updated".to_string(),
+        }   
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     /// Will be something like /path/to/common/RUMBLE/
@@ -21,6 +48,7 @@ pub struct Config {
     /// Will be something like /rumm/config/enabled_mods.json
     pub config_file: PathBuf,
     pub should_auto_update: bool,
+    pub thunderstore_browser_sort: SortType,
 }
 
 impl Config {
@@ -36,6 +64,7 @@ impl Config {
             mod_cache_directory: base_dir.join("mod_cache"),
             config_file: base_dir.join("enabled_mods.json"),
             should_auto_update: true,
+            thunderstore_browser_sort: SortType::UpdateDate,
         };
         config.load_from_file(); // ignoring errors, if there is an error it should just use the defaults
         config
@@ -155,7 +184,12 @@ impl LocalModOptions {
         Ok(())
     }
 
-    pub fn set_mod_enabled(&mut self, mod_to_change: &Mod, config: &Config, enable: bool) -> Result<()> {
+    pub fn set_mod_enabled(
+        &mut self,
+        mod_to_change: &Mod,
+        config: &Config,
+        enable: bool,
+    ) -> Result<()> {
         match enable {
             true => self.enable_mod(mod_to_change, config),
             false => self.disable_mod(mod_to_change, config),

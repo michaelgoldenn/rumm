@@ -2,19 +2,48 @@
 
 use std::{path::PathBuf, str::FromStr};
 
-use crate::thunderstore::ModList;
-use eframe::egui::{self, Ui};
+use crate::{
+    config_and_such::{Config, SortType},
+    thunderstore::ModList,
+};
+use eframe::egui::{self, ComboBox, Ui};
 
 use super::{AppCommand, TabResult};
 
-/// Renders the Thunderstore Browser tab UI.
+/// Renders the Thunderstore Browser tab UI
 pub fn draw_thunderstore_browser(ui: &mut Ui) -> TabResult {
-    // Iterate over mods and create the UI elements.
-    let mod_list = ModList::new(PathBuf::from_str("config/thunderstore-mods.json").unwrap()).expect("ModList was not able to be created, sorry it shouldn't crash but I was just writing this part quickly");
-    for new_mod in &mod_list.mods {
-        let command = ui
-            .horizontal(|ui| {
-                // Display the mod icon.
+    let mut mod_list = ModList::new(PathBuf::from_str("config/thunderstore-mods.json").unwrap())?;
+    let combo_box = ComboBox::from_id_salt("test");
+    let mut config = Config::new();
+    let mut sort = config.thunderstore_browser_sort.clone();
+    let sorted_mod_list = mod_list.sort(&sort).clone();
+    let mut selected_sort = String::from(config.thunderstore_browser_sort);
+    combo_box
+        .selected_text(String::from(sort.clone()))
+        .show_ui(ui, |ui| {
+            let sort_options = vec![
+                SortType::Alphabetically,
+                SortType::UpdateDate,
+                SortType::ReleaseDate,
+            ];
+            for option in sort_options.clone() {
+                ui.selectable_value(
+                    &mut selected_sort,
+                    option.clone().into(),
+                    String::from(option),
+                );
+            }
+        });
+    let selected_sort_type = SortType::from(selected_sort);
+    if sort != selected_sort_type {
+        config.thunderstore_browser_sort = selected_sort_type;
+        config.save_to_file()?;
+    }
+    let command = egui::Grid::new("Mod Grid")
+        .striped(true)
+        .show(ui, |ui| -> Option<AppCommand> {
+            for new_mod in &sorted_mod_list.mods {
+                // mod icon
                 ui.image(
                     new_mod
                         .versions
@@ -23,7 +52,7 @@ pub fn draw_thunderstore_browser(ui: &mut Ui) -> TabResult {
                         .icon
                         .clone(),
                 );
-                // Display the mod name.
+                // mod name
                 ui.label(
                     new_mod
                         .versions
@@ -35,13 +64,13 @@ pub fn draw_thunderstore_browser(ui: &mut Ui) -> TabResult {
                 if ui.add(egui::Button::new("Add Mod")).clicked() {
                     return Some(AppCommand::CacheModByID(new_mod.uuid, None));
                 }
-                None
-            })
-            .inner;
-        // if anything returned a command, return it
-        if let Some(cmd) = command {
-            return Ok(Some(cmd));
-        }
+                ui.end_row();
+            }
+            None
+        })
+        .inner;
+    if let Some(cmd) = command {
+        return Ok(Some(cmd));
     }
     Ok(None)
 }

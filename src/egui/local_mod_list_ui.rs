@@ -1,8 +1,8 @@
 // src/gui/LocalModList.rs
 
 use crate::thunderstore::{Mod, ModList, Version};
-use crate::user_info::LocalModOptions;
-use crate::{mod_cache::ModCache, user_info::Config};
+use crate::config_and_such::LocalModOptions;
+use crate::{mod_cache::ModCache, config_and_such::Config};
 use color_eyre::eyre::{Result, eyre};
 use eframe::egui::{self, Button, Checkbox, Image, Label, Ui};
 use uuid::Uuid;
