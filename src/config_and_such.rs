@@ -152,8 +152,8 @@ impl Config {
     /// Finds the Steam installation path on Windows
     pub fn find_steam_path_windows() -> Option<PathBuf> {
         // try to get the path from the registry
-        let result = (|| -> io::Result<PathBuf> {
-            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let result = (|| -> std::io::Result<PathBuf> {
+            let hkcu = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER);
             let steam_key = hkcu.open_subkey("SOFTWARE\\Valve\\Steam")?;
             let install_path: String = steam_key.get_value("SteamPath")?;
             Ok(PathBuf::from(install_path))
