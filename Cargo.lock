@@ -3420,7 +3420,7 @@ checksum = "3cd14fd5e3b777a7422cca79358c57a8f6e3a703d9ac187448d0daf220c2407f"
 
 [[package]]
 name = "rumm"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "async-recursion",
  "color-eyre",
